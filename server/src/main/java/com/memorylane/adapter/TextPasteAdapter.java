@@ -139,14 +139,11 @@ public class TextPasteAdapter implements InputAdapter {
         log.info("[import:{}] Done: {} new, {} duplicates, contact={}",
                 taskId, newCount, dupCount, contact.getName());
 
-        // Trigger async memory extraction
-        if (!newMessageIds.isEmpty()) {
-            extractionService.extractAsync(contact, newMessageIds);
-        }
-
         return new ImportTextResponse(
                 taskId,
-                new ImportTextResponse.ImportStats(newCount, dupCount, 0) // memoriesExtracted = 0 for now (async)
+                new ImportTextResponse.ImportStats(newCount, dupCount, 0),
+                contact.getId(),
+                newMessageIds
         );
     }
 

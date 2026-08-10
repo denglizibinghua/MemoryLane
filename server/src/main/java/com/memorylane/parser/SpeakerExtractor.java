@@ -29,6 +29,10 @@ public class SpeakerExtractor {
     /** The Chinese self reference that maps to {@value #SELF_SPEAKER}. */
     private static final String SELF_NAME = "我";
 
+    /** WeChat PC copy-paste: {@code "张三 14:30"} (simple name + time, no date or day-part). */
+    private static final Pattern WE_CHAT_SIMPLE_TIME_HEADER =
+            Pattern.compile("^\\s*(.+?)\\s+(\\d{1,2}:\\d{2})\\s*$");
+
     /** WeChat header with Chinese day-part time: {@code "张三 下午 2:30"}. */
     private static final Pattern WE_CHAT_DAY_PART_HEADER =
             Pattern.compile("^\\s*(.+?)\\s+(凌晨|早上|上午|中午|下午|晚上|夜里|半夜)\\s+(\\d{1,2}:\\d{2})\\s*$");
@@ -41,6 +45,11 @@ public class SpeakerExtractor {
     /** Inline speaker separator for Douyin/generic: {@code "张三：周末去不去"}. */
     private static final Pattern INLINE_SEPARATOR =
             Pattern.compile("^\\s*(.+?)\\s*[：:]\\s*(.+?)\\s*$");
+    /** Chinese date format (from PlatformDetector): {@code "2026年08月10日 17:55"}. */
+    private static final Pattern CN_DATE = PlatformDetector.WE_CHAT_CN_DATE;
+    /** WeChat system messages that should not be treated as speaker lines. */
+    private static final Pattern SYSTEM_MSG =
+            Pattern.compile("^\\[.*\\]$");
 
     /**
      * Extract structured messages from raw text for the given platform.
@@ -58,7 +67,12 @@ public class SpeakerExtractor {
         }
         String p = platform == null || platform.isBlank() ? PlatformDetector.GENERIC : platform.trim().toLowerCase();
         return switch (p) {
-            case PlatformDetector.WECHAT -> extractWeChat(rawText);
+            case PlatformDetector.WECHAT -> {
+                if (hasCnDateFormat(rawText)) {
+                    yield extractWeChatCnDate(rawText);
+                }
+                yield extractWeChat(rawText);
+            }
             case PlatformDetector.QQ -> extractQq(rawText);
             case PlatformDetector.DOUYIN -> extractDouyin(rawText, contactHint);
             case PlatformDetector.SMS -> extractSms(rawText, contactHint);
@@ -93,6 +107,16 @@ public class SpeakerExtractor {
                 }
                 currentSpeaker = date.group(1).trim();
                 currentTime = date.group(2);
+                contentLines = new ArrayList<>();
+                continue;
+            }
+            Matcher simpleTime = WE_CHAT_SIMPLE_TIME_HEADER.matcher(line);
+            if (simpleTime.matches()) {
+                if (currentSpeaker != null) {
+                    flush(result, currentSpeaker, currentTime, contentLines, PlatformDetector.WECHAT);
+                }
+                currentSpeaker = simpleTime.group(1).trim();
+                currentTime = simpleTime.group(2);
                 contentLines = new ArrayList<>();
                 continue;
             }
@@ -209,6 +233,102 @@ public class SpeakerExtractor {
             return;
         }
         out.add(message(speaker, content, MessageNormalizer.parseTime(time), platform));
+    }
+
+    /** Check if raw text contains Chinese date format (PC WeChat copy-paste). */
+    private boolean hasCnDateFormat(String rawText) {
+        for (String line : rawText.split("\\R")) {
+            if (CN_DATE.matcher(line).matches()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * WeChat PC copy-paste with Chinese date: three-line blocks.
+     *
+     * <pre>{@code
+     * 等离子冰花
+     * 2026年08月10日 17:55
+     * 母亲没有
+     * }</pre>
+     *
+     * <p>Parsing strategy:
+     * <ol>
+     *   <li>A line matching the CN date pattern marks a timestamp.
+     *       The line immediately before it is the speaker.</li>
+     *   <li>Lines following the timestamp are content, ending at the
+     *       next blank line or the next detected block.</li>
+     *   <li>WeChat system messages ({@code [动画表情]}, {@code [图片]})
+     *       are appended as part of the message content.</li>
+     * </ol>
+     */
+    private List<RawMessage> extractWeChatCnDate(String rawText) {
+        List<RawMessage> result = new ArrayList<>();
+        String[] lines = rawText.split("\\R");
+
+        String speaker = null;
+        String time = null;
+        List<String> contentLines = new ArrayList<>();
+
+        // First pass: gather all non-blank lines
+        List<String> nonBlank = nonBlankLines(rawText);
+
+        for (int i = 0; i < nonBlank.size(); i++) {
+            String line = nonBlank.get(i);
+
+            // Is this a date line?
+            if (CN_DATE.matcher(line).matches()) {
+                // The previous non-system line is the speaker.
+                // Look back from before this date line to find it.
+                if (i > 0) {
+                    String prev = nonBlank.get(i - 1);
+                    if (!CN_DATE.matcher(prev).matches() && !SYSTEM_MSG.matcher(prev).matches()) {
+                        // Flush previous block
+                        if (speaker != null && !contentLines.isEmpty()) {
+                            flush(result, speaker, time, contentLines, PlatformDetector.WECHAT);
+                        }
+                        speaker = prev;
+                        time = line;
+                        contentLines = new ArrayList<>();
+                        continue;
+                    }
+                }
+                // Date line without a speaker before it: treat as untimed content
+                if (speaker != null) {
+                    contentLines.add(line);
+                }
+                continue;
+            }
+
+            // System message: append to current content
+            if (SYSTEM_MSG.matcher(line).matches()) {
+                if (speaker != null) {
+                    contentLines.add(line);
+                }
+                continue;
+            }
+
+            // Check if this is a new speaker (next line is a date)
+            boolean nextIsDate = i + 1 < nonBlank.size() && CN_DATE.matcher(nonBlank.get(i + 1)).matches();
+            if (nextIsDate) {
+                // This line is a speaker, next is date — skip, will be handled when we reach the date line
+                continue;
+            }
+
+            // Otherwise it's content
+            if (speaker != null) {
+                contentLines.add(line);
+            }
+        }
+
+        // Flush final block
+        if (speaker != null && !contentLines.isEmpty()) {
+            flush(result, speaker, time, contentLines, PlatformDetector.WECHAT);
+        }
+
+        return result;
     }
 
     private List<String> nonBlankLines(String rawText) {

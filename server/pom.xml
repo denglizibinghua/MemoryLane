@@ -21,6 +21,9 @@
         <java.version>17</java.version>
         <spring-ai.version>1.0.0-M6</spring-ai.version>
         <pgvector.version>0.1.6</pgvector.version>
+        <!-- Override the Spring Boot 3.4.x-managed Lombok (1.18.34) which does
+             not support the JDK 24 toolchain used to build this project. -->
+        <lombok.version>1.18.38</lombok.version>
     </properties>
 
     <dependencies>
@@ -68,6 +71,30 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-anthropic-spring-boot-starter</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+        <!-- NOTE: Spring AI 1.0.0-M6 has NO spring-ai-dashscope starter (DashScope was donated to the separate
+             spring-ai-alibaba project, whose artifacts target Spring AI 1.1.0+ and are incompatible with M6).
+             DashScope/通义 is therefore routed through its official OpenAI-compatible endpoint in
+             DynamicChatModelFactory (OpenAiApi pointed at https://dashscope.aliyuncs.com/compatible-mode/v1). -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-zhipuai-spring-boot-starter</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-moonshot-spring-boot-starter</artifactId>
             <version>${spring-ai.version}</version>
         </dependency>
 

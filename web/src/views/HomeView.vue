@@ -7,6 +7,9 @@
           <span class="logo-text">MemoryLane</span>
         </div>
         <div class="header-actions">
+          <el-button circle @click="$router.push('/settings')" title="AI 设置">
+            <el-icon><Setting /></el-icon>
+          </el-button>
           <el-button type="primary" @click="$router.push('/contacts')">
             <el-icon><List /></el-icon>
             联系人
@@ -88,7 +91,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Timer, List, Collection, EditPen, ChatDotRound, DataAnalysis, MagicStick } from '@element-plus/icons-vue'
+import { Timer, List, Collection, EditPen, ChatDotRound, DataAnalysis, MagicStick, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useMemoryStore } from '@/stores/memories'
 import type { ImportResult } from '@/stores/memories'

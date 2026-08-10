@@ -22,12 +22,71 @@ spring:
     locations: classpath:db/migration
 
   ai:
+    # Provider is selected via the Settings page and stored in the DB
+    # (ai_settings table). The active ChatModel is rebuilt on every change, so
+    # switching providers takes effect immediately — no restart needed.
+    #
+    # IMPORTANT: each provider's auto-configured ChatModel AND EmbeddingModel
+    # beans are disabled. DelegatingChatModel is the single ChatModel in the
+    # context; EmbeddingModel is optional (pgvector not ready yet).
     openai:
-      api-key: ${LLM_API_KEY:your-api-key-here}
+      api-key: ${LLM_API_KEY:dummy}
       chat:
+        enabled: false
         options:
           model: ${LLM_MODEL:gpt-4o-mini}
           temperature: 0.3
+      embedding:
+        enabled: false
+      image:
+        enabled: false
+      audio:
+        speech:
+          enabled: false
+        transcription:
+          enabled: false
+
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        enabled: false
+      embedding:
+        enabled: false
+
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:dummy}
+      chat:
+        enabled: false
+
+    # DashScope/通义 uses Alibaba's OpenAI-compatible endpoint
+    # (https://dashscope.aliyuncs.com/compatible-mode/v1) — see
+    # DynamicChatModelFactory.
+    # dashscope:
+    #   api-key: ${DASHSCOPE_API_KEY:dummy}
+
+    zhipuai:
+      api-key: ${ZHIPUAI_API_KEY:dummy}
+      chat:
+        enabled: false
+      embedding:
+        enabled: false
+      image:
+        enabled: false
+
+    moonshot:
+      api-key: ${MOONSHOT_API_KEY:dummy}
+      chat:
+        enabled: false
+
+    # ------------------------------------------------------------------
+    # Supported providers and their config keys (for reference):
+    #   openai:    spring.ai.openai.api-key     (api base: https://api.openai.com)
+    #   ollama:    spring.ai.ollama.base-url    (default http://localhost:11434)
+    #   anthropic: spring.ai.anthropic.api-key  (api base: https://api.anthropic.com)
+    #   dashscope: spring.ai.openai.api-key     (OpenAI-compatible, base https://dashscope.aliyuncs.com/compatible-mode/v1)
+    #   zhipuai:   spring.ai.zhipuai.api-key    (base: https://open.bigmodel.cn/api/paas)
+    #   moonshot:  spring.ai.moonshot.api-key   (base: https://api.moonshot.cn)
+    # ------------------------------------------------------------------
 
 logging:
   level:

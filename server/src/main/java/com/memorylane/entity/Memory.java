@@ -2,6 +2,7 @@ package com.memorylane.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -25,6 +26,7 @@ public class Memory {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "memory_category")
+    @ColumnTransformer(write = "?::memory_category")
     private MemoryCategory category;
 
     @Column(nullable = false, columnDefinition = "TEXT")

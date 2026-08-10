@@ -34,15 +34,21 @@ public class PlatformDetector {
     /** Generic fallback format. */
     public static final String GENERIC = "generic";
 
-    /** WeChat header: {@code "张三 下午 2:30"} (Chinese day-part expressions). */
+    /** WeChat header with Chinese day-part time: {@code "张三 下午 2:30"}. */
     private static final Pattern WE_CHAT_DAY_PART =
             Pattern.compile("^\\s*.+?\\s+(凌晨|早上|上午|中午|下午|晚上|夜里|半夜)\\s+\\d{1,2}:\\d{2}\\s*$");
-    /** WeChat header: {@code "张三 2024/3/15 14:30"} (slash-separated date). */
+    /** WeChat header with slash date: {@code "张三 2024/3/15 14:30"} (slash-separated date). */
     private static final Pattern WE_CHAT_DATE =
             Pattern.compile("^\\s*.+?\\s+\\d{4}/\\d{1,2}/\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
     /** QQ header: {@code "张三 2024-03-15 14:30:00"} (dash-separated date). */
     private static final Pattern QQ_TIME =
             Pattern.compile("^\\s*.+?\\s+\\d{4}-\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
+    /** WeChat PC copy-paste format: {@code "张三 14:30"} (simple name + time, no date). */
+    private static final Pattern WE_CHAT_SIMPLE_TIME =
+            Pattern.compile("^\\s*.+?\\s+\\d{1,2}:\\d{2}\\s*$");
+    /** WeChat PC copy-paste with Chinese date: {@code "2026年08月10日 17:55"}. */
+    static final Pattern WE_CHAT_CN_DATE =
+            Pattern.compile("^\\s*\\d{4}年\\d{1,2}月\\d{1,2}日\\s+\\d{1,2}:\\d{2}\\s*$");
     /** Douyin line: {@code "张三：周末去不去"} (full- or half-width colon separator). */
     private static final Pattern DOUYIN_INLINE =
             Pattern.compile("^\\s*.+?[：:]\\s*\\S+\\s*$");
@@ -78,7 +84,10 @@ public class PlatformDetector {
 
     private int countFor(String platform, String rawText) {
         return switch (platform) {
-            case WECHAT -> countLines(rawText, WE_CHAT_DAY_PART) + countLines(rawText, WE_CHAT_DATE);
+            case WECHAT -> countLines(rawText, WE_CHAT_DAY_PART)
+                    + countLines(rawText, WE_CHAT_DATE)
+                    + countLines(rawText, WE_CHAT_SIMPLE_TIME)
+                    + countLines(rawText, WE_CHAT_CN_DATE);
             case QQ -> countLines(rawText, QQ_TIME);
             case DOUYIN -> countLines(rawText, DOUYIN_INLINE);
             case SMS -> countSmsBlocks(rawText);
@@ -125,6 +134,8 @@ public class PlatformDetector {
         }
         return !WE_CHAT_DAY_PART.matcher(t).matches()
                 && !WE_CHAT_DATE.matcher(t).matches()
+                && !WE_CHAT_SIMPLE_TIME.matcher(t).matches()
+                && !WE_CHAT_CN_DATE.matcher(t).matches()
                 && !QQ_TIME.matcher(t).matches()
                 && !DOUYIN_INLINE.matcher(t).matches();
     }

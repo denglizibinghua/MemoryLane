@@ -49,7 +49,7 @@ public class MemoryMerger {
 
             // 查找同联系人+同类别中可能冲突的旧记忆
             List<Memory> existing = memoryRepository
-                    .findByContactIdAndCategoryAndValidUntilIsNull(contact.getId(), category);
+                    .findByContactIdAndCategoryAndValidUntilIsNull(contact.getId(), category.name().toLowerCase());
 
             boolean merged = tryMerge(existing, content, now);
 
@@ -106,28 +106,80 @@ public class MemoryMerger {
     }
 
     /**
-     * 判断两段内容是否冲突（v0.1：同类别、关键词重叠 < 20%）。
+     * 判断两段内容是否冲突（v0.1：禁用 — 关键词比对无法可靠判断语义矛盾。
+     * 等 v0.2 LLM 语义比对再做）。
      */
     private boolean isConflicting(String oldContent, String newContent) {
-        double overlap = keywordOverlap(oldContent, newContent);
-        return overlap < 0.2;
+        return false;
     }
 
     /**
-     * 计算两段文本的关键词重叠率（Jaccard-like）。
+     * 计算两段文本的关键词重叠率（适用于中英文混合）。
+     *
+     * <p>中文使用字符级 bigram 切分（"中午一起" → ["中午","午一","一起"]），
+     * 英文保留按空格切词，兼容器混合文本。
      */
     private double keywordOverlap(String a, String b) {
-        String[] wordsA = a.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z]", " ").split("\\s+");
-        String[] wordsB = b.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z]", " ").split("\\s+");
+        List<String> tokensA = tokenize(a);
+        List<String> tokensB = tokenize(b);
 
-        if (wordsA.length == 0 || wordsB.length == 0) return 0;
+        if (tokensA.isEmpty() || tokensB.isEmpty()) return 0;
 
         int common = 0;
-        for (String wa : wordsA) {
-            for (String wb : wordsB) {
-                if (wa.equals(wb)) { common++; break; }
+        for (String ta : tokensA) {
+            if (tokensB.contains(ta)) common++;
+        }
+        return (double) common / Math.max(tokensA.size(), tokensB.size());
+    }
+
+    /** Tokenize: Chinese → character bigrams, ASCII → whitespace-split words. */
+    private List<String> tokenize(String text) {
+        String cleaned = text.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z0-9]", "");
+        if (cleaned.isEmpty()) return List.of();
+
+        List<String> tokens = new ArrayList<>();
+        StringBuilder cjkBuffer = new StringBuilder();
+        StringBuilder asciiBuffer = new StringBuilder();
+
+        for (int i = 0; i < cleaned.length(); i++) {
+            char c = cleaned.charAt(i);
+            if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN) {
+                if (asciiBuffer.length() > 0) {
+                    for (String w : asciiBuffer.toString().split("\\s+")) {
+                        if (!w.isBlank()) tokens.add(w.toLowerCase());
+                    }
+                    asciiBuffer.setLength(0);
+                }
+                cjkBuffer.append(c);
+            } else {
+                if (cjkBuffer.length() > 0) {
+                    tokens.addAll(bigrams(cjkBuffer.toString()));
+                    cjkBuffer.setLength(0);
+                }
+                asciiBuffer.append(c);
             }
         }
-        return (double) common / Math.max(wordsA.length, wordsB.length);
+        // flush
+        if (cjkBuffer.length() > 0) tokens.addAll(bigrams(cjkBuffer.toString()));
+        if (asciiBuffer.length() > 0) {
+            for (String w : asciiBuffer.toString().split("\\s+")) {
+                if (!w.isBlank()) tokens.add(w.toLowerCase());
+            }
+        }
+        return tokens;
+    }
+
+    private List<String> bigrams(String s) {
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < s.length() - 1; i++) {
+            result.add(s.substring(i, i + 2));
+        }
+        // Also include single chars for short strings (1-2 chars)
+        if (s.length() <= 2) {
+            for (int i = 0; i < s.length(); i++) {
+                result.add(String.valueOf(s.charAt(i)));
+            }
+        }
+        return result;
     }
 }

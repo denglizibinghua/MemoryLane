@@ -1,9 +1,9 @@
 package com.memorylane.retrieval;
 
 import com.memorylane.entity.Memory;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -11,14 +11,21 @@ import java.util.List;
 
 /**
  * pgvector 语义搜索 + embedding 生成。
+ *
+ * <p>EmbeddingModel 是可选的 — pgvector 未安装时 embedding 不可用，
+ * 全文搜索降级运行。
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SemanticSearch {
 
     private final EmbeddingModel embeddingModel;
     private final JdbcTemplate jdbc;
+
+    public SemanticSearch(ObjectProvider<EmbeddingModel> embeddingModelProvider, JdbcTemplate jdbc) {
+        this.embeddingModel = embeddingModelProvider.getIfAvailable();
+        this.jdbc = jdbc;
+    }
 
     /**
      * 语义检索记忆。
@@ -61,10 +68,14 @@ public class SemanticSearch {
     }
 
     private float[] embed(String text) {
+        if (embeddingModel == null) {
+            log.debug("Embedding model not configured — skipping semantic embedding");
+            return null;
+        }
         try {
             return embeddingModel.embed(text);
         } catch (Exception e) {
-            log.error("Embedding failed: {}", text, e);
+            log.warn("Embedding failed: {}", text, e);
             return null;
         }
     }

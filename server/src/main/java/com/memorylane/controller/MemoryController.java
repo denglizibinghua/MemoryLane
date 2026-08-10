@@ -29,7 +29,7 @@ public class MemoryController {
         try {
             MemoryCategory cat = MemoryCategory.valueOf(category.toLowerCase());
             return ResponseEntity.ok(
-                    memoryRepository.findByContactIdAndCategoryAndValidUntilIsNull(contactId, cat));
+                    memoryRepository.findByContactIdAndCategoryAndValidUntilIsNull(contactId, cat.name().toLowerCase()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
