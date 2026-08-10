@@ -273,6 +273,25 @@ CREATE INDEX idx_memories_valid ON memories(contact_id, valid_until)
     WHERE valid_until IS NULL OR valid_until > now();
 ```
 
+### 4.4 提醒表（约定自动提醒）
+
+```sql
+CREATE TABLE reminders (
+    id              BIGSERIAL PRIMARY KEY,
+    memory_id       BIGINT REFERENCES memories(id),  -- 关联的记忆
+    contact_id      BIGINT REFERENCES contacts(id),
+    title           VARCHAR(200) NOT NULL,           -- "和张三吃饭"
+    remind_at       TIMESTAMPTZ NOT NULL,            -- 提醒时间（如提前30分钟）
+    event_time      TIMESTAMPTZ,                     -- 约定本身的时间（如明天10点）
+    status          VARCHAR(20) DEFAULT 'pending',   -- pending | triggered | dismissed
+    source_text     TEXT,                            -- 原始消息片段
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_reminders_status_time ON reminders(status, remind_at)
+    WHERE status = 'pending';
+```
+
 ---
 
 ## 5. 核心数据流
@@ -327,12 +346,24 @@ CREATE INDEX idx_memories_valid ON memories(contact_id, valid_until)
 └──────────┬──────────────────┘
            ▼
 ┌─────────────────────────────┐
-│ ⑦ MemoryMerger              │
+│ ⑦ PromiseDetector (LLM)     │
+│ 如果 category = 'promise':   │
+│ · 解析时间表达式 → 时间戳    │
+│ · 计算提醒提前量              │
+│ · 拆分场景：                  │
+│   - 批量导入(>3条)：暂存     │
+│   - 日常对话(≤3条)：立即弹出  │
+└──────────┬──────────────────┘
+           ▼
+┌─────────────────────────────┐
+│ ⑧ MemoryMerger              │
 │ 新记忆与已有记忆合并：        │
 │ · 语义相同 → 更新置信度      │
 │ · 信息冲突 → valid_until 标记 │
 │ · 全新信息 → INSERT          │
 │ 生成 embedding + tsvector    │
+│ → 如有待确认提醒 → INSERT    │
+│   reminders (status=pending) │
 └─────────────────────────────┘
 ```
 
@@ -502,7 +533,99 @@ Response:
 
 ---
 
-## 8. 迭代路线
+## 8. 产品设计决策
+
+### 8.1 批量导入 vs 日常对话：同一条管线，两个入口
+
+**不需要区分。** 后端走的是完全相同的流程：粘贴文本 → AI 解析 → 结构化入库 → 提取记忆。
+
+| 场景 | 用户心智 | 数据量 | 前端入口 | 响应期望 |
+|---|---|---|---|---|
+| 批量导入 | "把我跟张三三个月的聊天倒进来" | 几百条 | 大文本框 + [粘贴并分析] | 可以等几秒 |
+| 日常对话 | "张三刚说了一句话" | 1-3 条 | 快捷输入框 (Alt+V) | 秒回 |
+
+**两个入口，一条管线。** 用户自己决定什么时候用哪个，AI 不需要区分模式。
+
+### 8.2 约定提醒：分场景触发
+
+AI 从 `promise` 类记忆中自动检测时间表达式 → 解析为具体时间戳 → 弹出确认。
+
+**分场景触发的智能策略：**
+
+| 导入量 | 触发方式 |
+|---|---|
+| ≤ 3 条（日常对话） | **即刻弹出确认框**："检测到约定「明天10点吃饭」。设为日程提醒？" [是] [忽略] |
+| > 3 条（批量导入） | **导入完成后统一列表**："检测到 4 个约定。[查看并设置提醒]" → 勾选确认 |
+| 提醒时间 | 默认提前 30 分钟；用户可自定义提前量 |
+| 提醒方式 | 浏览器通知 (Notification API) + 页面内 badge |
+
+### 8.3 多人/群聊：数据模型天然支持
+
+`contacts.type` 区分个体/群体，`conversations.type` 区分私聊/群聊。区别只在 AI 解析阶段——群聊需识别多人发言。
+
+群聊的价值：**对方在群体中的社交风格 ≠ 私聊中 TA 对你的态度，这是两套独立画像。**
+
+### 8.4 军师模式：回复建议 + 新话题建议合一
+
+不是两个按钮，**一个「🧠 军师」按钮就够了。** 点一下同时出两段内容：
+
+- **上段：回复建议**（2-3 条不同调性，基于记忆库中的历史上下文）
+- **下段：新话题建议**（如果不想回复对方，AI 基于对方兴趣和近期盲区推荐话题）
+
+回复建议标签示例：`[轻松随性] "有啊！想去哪？"` / `[引用约定] "终于约我了！爬山去不？"` / `[诚实留余地] "周末可能要加班...周日行吗"`
+
+每条建议旁边带 📋 一键复制按钮。
+
+---
+
+## 9. API 设计（补充）
+
+### 9.1 军师模式（回复建议 + 新话题）
+
+```
+POST /api/v1/advisor/suggest
+Content-Type: application/json
+
+{
+  "contactId": 1,
+  "lastMessage": "周末有空吗？",       // 对方最新一句话
+  "recentContext": ["最近聊了爬山"]     // 可选，不传则自动拉最近消息
+}
+
+Response:
+{
+  "replies": [
+    {
+      "style": "轻松随性",
+      "content": "有啊！想去哪？",
+      "reason": "张三偏好直接沟通风格"
+    },
+    {
+      "style": "引用约定",
+      "content": "终于约我了！爬山去不？",
+      "reason": "你们上周约过爬山，还没定日期"
+    }
+  ],
+  "newTopics": [
+    {
+      "content": "他上次说想学吉他，问问他开始学了没",
+      "reason": "2周前提到，之后再没聊过这个话题"
+    }
+  ]
+}
+```
+
+### 9.2 提醒管理
+
+```
+GET  /api/v1/reminders?status=pending     # 待触发提醒列表
+POST /api/v1/reminders/{id}/confirm       # 确认提醒（批量导入后用户勾选）
+POST /api/v1/reminders/{id}/dismiss       # 忽略提醒
+```
+
+---
+
+## 10. 迭代路线
 
 > **边学边造**：学习和项目不冲突。学到 Spring AI 的 Function Calling → 直接落地到 Agent 模块；学到 pgvector → 直接落地到检索层。每个技术点学完就有对应的代码要写。
 
@@ -521,7 +644,8 @@ Response:
 
 ```
 📋 截图 OCR 导入（多模态 LLM）
-📋 上下文感知回复建议
+📋 军师模式（回复建议 + 新话题建议）
+📋 约定自动提醒（promise → 日程提醒）
 📋 关系动态面板（消息频率趋势）
 📋 导出（Markdown / JSON）
 ```
@@ -537,7 +661,7 @@ Response:
 
 ---
 
-## 9. 部署架构
+## 11. 部署架构
 
 ```yaml
 # docker-compose.yml
@@ -577,7 +701,7 @@ volumes:
 
 ---
 
-## 10. 从前辈那里"偷"来的关键设计
+## 12. 从前辈那里"偷"来的关键设计
 
 | 偷自 | 偷了什么 | 用在哪 |
 |---|---|---|
@@ -592,7 +716,7 @@ volumes:
 
 ---
 
-## 11. 待讨论的开放问题
+## 13. 待讨论的开放问题
 
 1. **LLM 成本控制**：批量导入时，每 100 条消息的 LLM 调用量预估多少 token？要不要做本地小模型降级？
 2. **实时性 vs 批处理**：用户粘贴完是立刻等 AI 分析完，还是后台异步 + 通知？
