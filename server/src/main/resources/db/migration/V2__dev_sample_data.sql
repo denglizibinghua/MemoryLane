@@ -1,0 +1,6 @@
+-- ============================================================
+-- MemoryLane V2 — Sample data for development
+-- ============================================================
+-- This migration adds test data for local development only.
+-- It runs in dev profile but is safe for production (optional).
+-- ============================================================

@@ -26,7 +26,7 @@
 | 层 | 技术 |
 |---|---|
 | 后端 | Java 17 + Spring Boot 3.x + Spring AI |
-| 数据库 | MySQL（结构化存储）+ PostgreSQL + pgvector（向量检索） |
+| 数据库 | PostgreSQL 16 + pgvector + tsvector（全功能单库） |
 | 前端 | Vue 3 + Element Plus + Vite |
 | AI | 通义千问 / DeepSeek（可替换） |
 | 部署 | Docker Compose |
@@ -40,10 +40,11 @@
 当前进度：
 - [x] 竞品调研（WeLink、ChatLab、ex-ai 等）
 - [x] 数据库模型设计
-- [x] 技术选型
-- [x] 架构设计文档
-- [ ] 项目脚手架（Spring Boot + Vue 3 + Docker Compose）
-- [ ] 文本导入 → 记忆提取 MVP
+- [x] 技术选型（Postgres-only，pgvector + tsvector + JSONB）
+- [x] 架构设计文档（724 行，覆盖 DDL/API/产品决策）
+- [x] 项目脚手架：Spring Boot 3.4 + Vue 3 + Element Plus + Docker Compose
+- [ ] 文本导入管线（PlatformDetector → SpeakerExtractor → 入库）
+- [ ] 记忆提取 → 检索闭环
 
 ---
 

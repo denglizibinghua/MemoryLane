@@ -1,0 +1,18 @@
+package com.memorylane.repository;
+
+import com.memorylane.entity.Reminder;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.List;
+
+@Repository
+public interface ReminderRepository extends JpaRepository<Reminder, Long> {
+
+    List<Reminder> findByContactIdOrderByRemindAtDesc(Long contactId);
+
+    List<Reminder> findByStatusAndRemindAtBefore(String status, Instant before);
+
+    List<Reminder> findByContactIdAndStatus(Long contactId, String status);
+}

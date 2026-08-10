@@ -26,5 +26,11 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
+# Vite
+.vite/
+
+# H2 / test DBs
+*.db
+
 # OpenPaw sessions
 .omo/
