@@ -71,14 +71,26 @@ public class MemoryMerger {
     }
 
     /**
-     * 尝试将新内容合并到已有记忆中。
+     * 尝试将新内容合并到已有记忆中，三层决策链（仿 Graphiti）：
+     * ① 精确匹配 → 直接合并（零计算成本）
+     * ② Bigram 相似 → 合并提升置信度
+     * ③ 时间区间冲突 → 旧记忆过期，新记忆插入
      *
      * @return true 如果合并成功（无需新增），false 如果应新建一条记忆
      */
     private boolean tryMerge(List<Memory> existing, String newContent, Instant now) {
         for (Memory old : existing) {
+            // ① Exact normalized match (Graphiti fast path)
+            if (isExactMatch(old.getContent(), newContent)) {
+                double newConf = Math.min(0.95, old.getConfidence() + 0.1);
+                old.setConfidence(newConf);
+                memoryRepository.save(old);
+                log.debug("Exact match merged: {}", old.getContent());
+                return true;
+            }
+
+            // ② Bigram similarity (Chinese-aware)
             if (isSimilar(old.getContent(), newContent)) {
-                // 语义相似：提高置信度，不新增
                 double newConf = Math.min(0.95, old.getConfidence() + 0.1);
                 old.setConfidence(newConf);
                 memoryRepository.save(old);
@@ -86,8 +98,8 @@ public class MemoryMerger {
                 return true;
             }
 
-            if (isConflicting(old.getContent(), newContent)) {
-                // 语义冲突：旧记忆标记过期
+            // ③ Interval conflict (Graphiti resolve_edge_contradictions)
+            if (isConflicting(old, newContent, now)) {
                 old.setValidUntil(now);
                 memoryRepository.save(old);
                 log.info("Conflict resolved: old='{}' expired, new='{}'", old.getContent(), newContent);
@@ -95,6 +107,18 @@ public class MemoryMerger {
             }
         }
         return false;
+    }
+
+    /**
+     * 精确规范化匹配：trim + lowercase + 空白折叠。
+     * 仿 Graphiti _normalize_string_exact 快速路径。
+     */
+    private boolean isExactMatch(String a, String b) {
+        return normalize(a).equals(normalize(b));
+    }
+
+    private String normalize(String text) {
+        return text.trim().toLowerCase().replaceAll("\\s+", " ");
     }
 
     /**
@@ -106,11 +130,32 @@ public class MemoryMerger {
     }
 
     /**
-     * 判断两段内容是否冲突（v0.1：禁用 — 关键词比对无法可靠判断语义矛盾。
-     * 等 v0.2 LLM 语义比对再做）。
+     * 时间区间冲突检测（仿 Graphiti resolve_edge_contradictions）。
+     *
+     * <p>两个同类别记忆冲突当且仅当：
+     * <ol>
+     *   <li>旧记忆仍然有效（validUntil 为 null 或在 now 之后）</li>
+     *   <li>内容不相似（bigram &lt; 60%，已由 isSimilar 前置排除）</li>
+     *   <li>但有话题重叠（bigram &gt; 10%）—— 同一话题的不同信息</li>
+     * </ol>
+     *
+     * <p>v0.1 简化：不做 LLM 语义比对，用 bigram 重叠度做启发式。
+     * 旧记忆被过期后，新记忆作为更正版本插入。
      */
-    private boolean isConflicting(String oldContent, String newContent) {
-        return false;
+    private boolean isConflicting(Memory old, String newContent, Instant now) {
+        // 旧记忆已过期 → 不冲突
+        if (old.getValidUntil() != null && !old.getValidUntil().isAfter(now)) {
+            return false;
+        }
+
+        // 内容相似 → 应由 isSimilar 合并，不算冲突
+        if (isSimilar(old.getContent(), newContent)) {
+            return false;
+        }
+
+        // 话题重叠度 > 10% → 同一话题的更新/更正
+        double overlap = keywordOverlap(old.getContent(), newContent);
+        return overlap > 0.1;
     }
 
     /**

@@ -20,6 +20,7 @@ export interface ImportResult {
     duplicates: number
     memoriesExtracted: number
   }
+  contactId: number
 }
 
 export const useMemoryStore = defineStore('memories', () => {

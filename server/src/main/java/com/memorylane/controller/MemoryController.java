@@ -5,6 +5,7 @@ import com.memorylane.entity.MemoryCategory;
 import com.memorylane.repository.MemoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,12 +18,14 @@ public class MemoryController {
     private final MemoryRepository memoryRepository;
 
     @GetMapping("/contact/{contactId}")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<Memory>> listByContact(@PathVariable Long contactId) {
         return ResponseEntity.ok(
                 memoryRepository.findByContactIdAndValidUntilIsNullOrderByConfidenceDesc(contactId));
     }
 
     @GetMapping("/contact/{contactId}/category/{category}")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<Memory>> listByCategory(
             @PathVariable Long contactId,
             @PathVariable String category) {

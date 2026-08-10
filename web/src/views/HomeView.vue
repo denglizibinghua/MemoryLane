@@ -58,12 +58,23 @@
 
         <el-alert
           v-if="importResult"
-          :title="`导入完成：${importResult.stats.newMessages} 条新消息，${importResult.stats.duplicates} 条重复`"
           type="success"
           show-icon
           closable
           style="max-width: 640px; margin: 0 auto 16px"
-        />
+        >
+          <template #title>
+            导入完成：{{ importResult.stats.newMessages }} 条新消息，{{ importResult.stats.duplicates }} 条重复
+          </template>
+          <div style="margin-top: 8px">
+            <el-button type="primary" size="small" @click="$router.push(`/contacts/${importResult.contactId}`)">
+              查看联系人
+            </el-button>
+            <el-button size="small" @click="$router.push('/memories')">
+              查看记忆库
+            </el-button>
+          </div>
+        </el-alert>
         <el-alert
           v-if="importError"
           :title="importError"

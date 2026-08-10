@@ -22,6 +22,7 @@
           placeholder="选择联系人"
           clearable
           style="width: 100%; margin-bottom: 16px"
+          @change="onContactChange"
         >
           <el-option
             v-for="c in contactStore.contacts"
@@ -31,17 +32,28 @@
           />
         </el-select>
 
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索记忆..."
-          :prefix-icon="Search"
-          clearable
-          class="search-input"
-        />
+        <div v-if="loading" style="text-align: center; padding: 40px">
+          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+          <p style="color: #9ca3af; margin-top: 12px">加载中...</p>
+        </div>
 
-        <el-empty v-if="!memoryStore.memories.length" description="暂无可展示的记忆" />
+        <div v-else-if="errorMsg" style="text-align: center; padding: 40px">
+          <p style="color: #ef4444">{{ errorMsg }}</p>
+          <el-button size="small" @click="retry" style="margin-top: 12px">重试</el-button>
+        </div>
 
-        <el-timeline v-else class="memory-timeline">
+        <template v-else>
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索记忆..."
+            :prefix-icon="Search"
+            clearable
+            class="search-input"
+          />
+
+          <el-empty v-if="!memoryStore.memories.length" description="暂无可展示的记忆" />
+
+          <el-timeline v-else class="memory-timeline">
           <el-timeline-item
             v-for="m in filteredMemories"
             :key="m.id"
@@ -66,14 +78,15 @@
             </el-card>
           </el-timeline-item>
         </el-timeline>
+        </template>
       </el-main>
     </el-container>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { ArrowLeft, Search, ChatDotRound } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { ArrowLeft, Search, ChatDotRound, Loading } from '@element-plus/icons-vue'
 import { useMemoryStore } from '@/stores/memories'
 import { useContactStore } from '@/stores/contacts'
 
@@ -82,16 +95,30 @@ const contactStore = useContactStore()
 const searchQuery = ref('')
 const categoryFilter = ref('')
 const selectedContactId = ref<number | null>(null)
+const loading = ref(false)
+const errorMsg = ref('')
 
 onMounted(() => {
   contactStore.fetchAll()
 })
 
-watch(selectedContactId, (id) => {
-  if (id) {
-    memoryStore.fetchByContact(id)
+async function onContactChange(id: number | null) {
+  if (!id) return
+  selectedContactId.value = id
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    await memoryStore.fetchByContact(id)
+  } catch (e: any) {
+    errorMsg.value = e?.response?.data?.message || e?.message || '加载失败'
+  } finally {
+    loading.value = false
   }
-})
+}
+
+function retry() {
+  if (selectedContactId.value) onContactChange(selectedContactId.value)
+}
 
 const filteredMemories = computed(() => {
   let list = memoryStore.memories

@@ -53,12 +53,23 @@ public class MemoryExtractionService {
         log.info("Starting memory extraction for contact={}, {} messages", contact.getName(), messageIds.size());
 
         try {
-            // ① 准备消息数据（ID + 内容）
+            // ① 准备消息数据（ID + 内容），过滤无效消息
             List<Message> messages = messageRepository.findAllById(messageIds);
             List<String> labeledMessages = new ArrayList<>();
             for (Message msg : messages) {
-                labeledMessages.add(msg.getId() + ":" + msg.getSpeaker() + ":" + msg.getContent());
+                String labeled = msg.getId() + ":" + msg.getSpeaker() + ":" + msg.getContent();
+                if (MessageFilter.isValidLabeled(labeled)) {
+                    labeledMessages.add(labeled);
+                }
             }
+
+            if (labeledMessages.isEmpty()) {
+                log.info("All messages filtered out for contact={} ({} total, 0 valid)",
+                        contact.getName(), messages.size());
+                return;
+            }
+
+            log.debug("Filtered: {} valid out of {} total messages", labeledMessages.size(), messages.size());
 
             // ② 重要性分类
             String importanceJson = importanceClassifier.classify(labeledMessages);
