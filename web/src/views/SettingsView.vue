@@ -95,6 +95,51 @@
             </el-button>
           </div>
         </el-card>
+
+        <!-- Semantic Search (Embedding) Settings -->
+        <el-card v-loading="loading" class="settings-card embedding-card" shadow="hover">
+          <template #header>
+            <div class="embedding-card-header">
+              <span class="embedding-card-title">语义搜索</span>
+              <el-tag
+                :type="embeddingActive ? 'success' : 'info'"
+                size="small"
+                effect="plain"
+              >
+                {{ embeddingActive ? '已激活' : '未激活' }}
+              </el-tag>
+            </div>
+          </template>
+
+          <el-form label-position="top" :model="form">
+            <!-- Enable Toggle -->
+            <el-form-item label="启用语义搜索">
+              <el-switch v-model="form.embeddingEnabled" />
+            </el-form-item>
+
+            <!-- Embedding Provider -->
+            <el-form-item v-if="form.embeddingEnabled" label="Embedding 服务商">
+              <el-select
+                v-model="form.embeddingProvider"
+                placeholder="选择 Embedding 服务商"
+                style="width: 100%"
+                @change="onEmbeddingProviderChange"
+              >
+                <el-option
+                  v-for="p in embeddingProviderOptions"
+                  :key="p.key"
+                  :label="p.name"
+                  :value="p.key"
+                />
+              </el-select>
+            </el-form-item>
+
+            <!-- Embedding Model -->
+            <el-form-item v-if="form.embeddingEnabled" label="Embedding 模型">
+              <el-input v-model="form.embeddingModel" placeholder="text-embedding-3-small" />
+            </el-form-item>
+          </el-form>
+        </el-card>
       </el-main>
     </el-container>
   </div>
@@ -127,6 +172,7 @@ const providerDefaults: Record<string, ProviderDefault> = {
   dashscope:  { name: '通义千问',       defaultModel: 'qwen-plus',                    defaultBaseUrl: '',                           needsApiKey: true },
   zhipuai:    { name: '智谱 GLM',       defaultModel: 'glm-4-flash',                  defaultBaseUrl: '',                           needsApiKey: true },
   moonshot:   { name: 'Kimi (月之暗面)', defaultModel: 'moonshot-v1-8k',              defaultBaseUrl: 'https://api.moonshot.cn',   needsApiKey: true },
+  custom:     { name: '自定义 (OpenAI 兼容)', defaultModel: 'gpt-4o-mini',           defaultBaseUrl: '',                           needsApiKey: true },
 }
 
 const loading = ref(false)
@@ -141,9 +187,14 @@ const form = ref<AiSettings>({
   apiBase: '',
   model: '',
   temperature: 0.3,
+  embeddingEnabled: false,
+  embeddingProvider: 'openai',
+  embeddingModel: '',
 })
 
 const serverProviders = ref<ProviderInfo[]>([])
+const embeddingActive = ref(false)
+const embeddingProviders = ref<ProviderInfo[]>([])
 
 const providers = computed(() => {
   if (serverProviders.value.length > 0) {
@@ -173,6 +224,19 @@ const currentProvider = computed(() => {
   return local || providerDefaults.openai
 })
 
+const embeddingProviderOptions = computed(() => {
+  if (embeddingProviders.value.length > 0) {
+    return embeddingProviders.value.map((p) => ({
+      key: p.key,
+      name: p.name,
+    }))
+  }
+  return Object.entries(embeddingModelDefaults).map(([key]) => ({
+    key,
+    name: providerDefaults[key]?.name || key,
+  }))
+})
+
 function isMaskedApiKey(key: string): boolean {
   if (!key) return false
   return key.includes('***') || (key.includes('...') && key.length < 20)
@@ -196,6 +260,19 @@ function onProviderChange(newProvider: string) {
   }
 }
 
+const embeddingModelDefaults: Record<string, string> = {
+  openai: 'text-embedding-3-small',
+  zhipuai: 'embedding-2',
+  ollama: 'nomic-embed-text',
+}
+
+function onEmbeddingProviderChange(newProvider: string) {
+  const defaultModel = embeddingModelDefaults[newProvider] || ''
+  if (defaultModel) {
+    form.value.embeddingModel = defaultModel
+  }
+}
+
 async function loadSettings() {
   loading.value = true
   try {
@@ -207,6 +284,13 @@ async function loadSettings() {
     form.value.apiBase = data.apiBase || ''
     form.value.model = data.model || ''
     form.value.temperature = data.temperature ?? 0.3
+    form.value.embeddingEnabled = data.embeddingEnabled ?? false
+    form.value.embeddingProvider = data.embeddingProvider || 'openai'
+    form.value.embeddingModel = data.embeddingModel || ''
+    embeddingActive.value = data.embeddingActive ?? false
+    if (data.embeddingProviders && data.embeddingProviders.length > 0) {
+      embeddingProviders.value = data.embeddingProviders
+    }
 
     if (data.apiKey && isMaskedApiKey(data.apiKey)) {
       form.value.apiKey = data.apiKey
@@ -253,6 +337,7 @@ async function handleSave() {
       form.value.apiKey = data.apiKey
       apiKeyModified.value = false
     }
+    embeddingActive.value = data.embeddingActive ?? embeddingActive.value
   } catch (e: any) {
     ElMessage.error('保存失败：' + (e?.response?.data?.message || e?.message || '未知错误'))
   } finally {
@@ -267,6 +352,9 @@ function buildPayload(): AiSettings {
     apiBase: form.value.apiBase,
     model: form.value.model,
     temperature: form.value.temperature,
+    embeddingEnabled: form.value.embeddingEnabled,
+    embeddingProvider: form.value.embeddingProvider,
+    embeddingModel: form.value.embeddingModel,
   }
 }
 
@@ -365,5 +453,23 @@ onMounted(() => {
   gap: 12px;
   margin-top: 24px;
   justify-content: flex-end;
+}
+
+.embedding-card {
+  max-width: 640px;
+  margin: 24px auto 0;
+  border-radius: 12px;
+}
+
+.embedding-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.embedding-card-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e1b4b;
 }
 </style>

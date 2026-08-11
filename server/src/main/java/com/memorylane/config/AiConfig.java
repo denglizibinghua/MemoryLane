@@ -1,36 +1,34 @@
 package com.memorylane.config;
 
-import com.memorylane.service.AiSettingsService;
-import jakarta.annotation.PostConstruct;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 /**
- * Spring AI configuration — ChatClient for structured LLM interactions.
+ * Spring AI configuration — ChatClient + DelegatingEmbeddingModel beans.
  *
- * <p>The ChatModel is provided by {@link DelegatingChatModel}, which is the
- * single ChatModel bean in the context and auto-detected by the
- * {@link ChatClient.Builder} auto-configuration. The active provider model is
- * swapped in dynamically from the DB-backed settings, so no restart is needed
- * to switch between OpenAI / Ollama / Anthropic / DashScope / ZhiPu / Moonshot.
+ * <p>The ChatModel is provided by {@link DelegatingChatModel}, the single
+ * ChatModel bean auto-detected by {@link ChatClient.Builder} auto-config.
+ * The EmbeddingModel is {@link DelegatingEmbeddingModel} — always present,
+ * delegates to a real model only when the user enables semantic search
+ * in Settings. Both are hot-swappable from DB-backed settings.
+ *
+ * <p>Startup initialization of persisted provider settings is handled by
+ * {@code AiSettingsService#initDefaultProvider() @PostConstruct}.
  */
 @Configuration
 public class AiConfig {
 
-    private final AiSettingsService aiSettingsService;
-
-    public AiConfig(AiSettingsService aiSettingsService) {
-        this.aiSettingsService = aiSettingsService;
-    }
-
     /**
-     * Load the persisted provider settings at startup so the app comes up with
-     * the last-configured provider already active.
+     * The always-present EmbeddingModel bean. When embedding is disabled
+     * (default), it returns empty results; when enabled, it delegates to
+     * the provider selected in Settings.
      */
-    @PostConstruct
-    public void initDefaultProvider() {
-        aiSettingsService.initDefaultProvider();
+    @Bean
+    @Primary
+    public DelegatingEmbeddingModel delegatingEmbeddingModel() {
+        return new DelegatingEmbeddingModel();
     }
 
     @Bean

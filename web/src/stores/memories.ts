@@ -45,6 +45,13 @@ export interface PreviewResult {
   messageCount: number
 }
 
+export interface ScreenshotPreview {
+  ocrText: string
+  platform: string
+  speakers: string[]
+  messageCount: number
+}
+
 export const useMemoryStore = defineStore('memories', () => {
   const memories = ref<Memory[]>([])
   const searchResults = ref<SearchResult[]>([])
@@ -99,8 +106,29 @@ export const useMemoryStore = defineStore('memories', () => {
     return res.data
   }
 
+  async function importScreenshot(file: File, selfName: string, platform: string) {
+    const form = new FormData()
+    form.append('image', file)
+    if (selfName) form.append('selfName', selfName)
+    if (platform && platform !== 'auto') form.append('platform', platform)
+    const res = await api.post<ImportResult>('/import/screenshot', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    lastImport.value = res.data
+    return res.data
+  }
+
+  async function previewScreenshot(file: File): Promise<ScreenshotPreview> {
+    const form = new FormData()
+    form.append('image', file)
+    const res = await api.post<ScreenshotPreview>('/import/screenshot/preview', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  }
+
   return {
     memories, searchResults, loading, searching, lastImport,
-    fetchByContact, fetchByCategory, searchMemories, previewImport, importText,
+    fetchByContact, fetchByCategory, searchMemories, previewImport, importText, importScreenshot, previewScreenshot,
   }
 })

@@ -43,6 +43,15 @@ public class AiSettings {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "embedding_enabled")
+    private Boolean embeddingEnabled;
+
+    @Column(name = "embedding_provider", length = 50)
+    private String embeddingProvider;
+
+    @Column(name = "embedding_model", length = 100)
+    private String embeddingModel;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -1,5 +1,6 @@
 package com.memorylane.controller;
 
+import com.memorylane.adapter.ScreenshotAdapter;
 import com.memorylane.adapter.TextPasteAdapter;
 import com.memorylane.adapter.model.RawMessage;
 import com.memorylane.dto.ImportTextRequest;
@@ -16,11 +17,13 @@ import com.memorylane.repository.MessageRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,6 +43,7 @@ import java.util.UUID;
 public class ImportController {
 
     private final TextPasteAdapter textPasteAdapter;
+    private final ScreenshotAdapter screenshotAdapter;
     private final MemoryExtractionService extractionService;
     private final ContactRepository contactRepository;
     private final ConversationRepository conversationRepository;
@@ -105,6 +109,101 @@ public class ImportController {
         }
 
         return ResponseEntity.accepted().body(response);
+    }
+
+    /**
+     * POST /api/v1/import/screenshot/preview
+     *
+     * OCR-only preview — returns extracted text + detected info so the user
+     * can review and correct before the real import.
+     */
+    @PostMapping(value = "/screenshot/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> previewScreenshot(
+            @RequestPart("image") MultipartFile image) {
+
+        if (image.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "截图文件为空"));
+        }
+
+        try {
+            String ocrText = screenshotAdapter.ocr(image);
+
+            // Run preview parsing to detect platform and speakers
+            List<RawMessage> parsed = textPasteAdapter.parse(ocrText, null, "auto");
+            String platform = parsed.isEmpty() ? "auto"
+                    : (parsed.get(0).platform() != null ? parsed.get(0).platform() : "auto");
+
+            Set<String> speakers = new LinkedHashSet<>();
+            for (RawMessage rm : parsed) {
+                if (rm.speaker() != null && !rm.speaker().isBlank() && !"self".equals(rm.speaker())) {
+                    speakers.add(rm.speaker().trim());
+                }
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "ocrText", ocrText,
+                    "platform", platform,
+                    "speakers", speakers,
+                    "messageCount", parsed.size()
+            ));
+        } catch (Exception e) {
+            log.error("Screenshot preview failed", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("message", "截图识别失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/v1/import/screenshot
+     *
+     * Upload a chat screenshot image → OCR via multimodal LLM → parse → persist.
+     * Reuses TextPasteAdapter for the full import pipeline.
+     */
+    @PostMapping(value = "/screenshot", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importScreenshot(
+            @RequestPart("image") MultipartFile image,
+            @RequestParam(value = "contactName", required = false) String contactName,
+            @RequestParam(value = "selfName", required = false) String selfName,
+            @RequestParam(value = "platform", defaultValue = "auto") String platform) {
+
+        if (image.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "截图文件为空"));
+        }
+
+        log.info("Screenshot import: {} bytes, platform={}, selfName={}",
+                image.getSize(), platform, selfName);
+
+        try {
+            // Step 1: OCR → raw text
+            String ocrText = screenshotAdapter.ocr(image);
+            log.info("OCR extracted {} chars", ocrText.length());
+
+            // Step 2: Reuse the existing text import pipeline
+            ImportTextResponse response = textPasteAdapter.process(
+                    new ImportTextRequest(selfName, contactName, platform, ocrText));
+
+            // Step 3: Trigger memory extraction (mirrors importText endpoint)
+            if (response.contacts() != null) {
+                for (ContactResult cr : response.contacts()) {
+                    if (cr.messageIds() != null && !cr.messageIds().isEmpty()) {
+                        Contact contact = contactRepository.findById(cr.contactId()).orElse(null);
+                        if (contact != null) {
+                            log.info("Triggering memory extraction for contact '{}' ({} messages)",
+                                    contact.getName(), cr.messageIds().size());
+                            extractionService.extractAsync(contact, cr.messageIds());
+                        }
+                    }
+                }
+            }
+
+            return ResponseEntity.accepted().body(response);
+        } catch (Exception e) {
+            log.error("Screenshot import failed", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("message", "截图识别失败: " + e.getMessage()));
+        }
     }
 
     /**

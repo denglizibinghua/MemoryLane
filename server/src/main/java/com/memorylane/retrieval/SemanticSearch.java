@@ -1,9 +1,8 @@
 package com.memorylane.retrieval;
 
+import com.memorylane.config.DelegatingEmbeddingModel;
 import com.memorylane.entity.Memory;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -12,18 +11,18 @@ import java.util.List;
 /**
  * pgvector 语义搜索 + embedding 生成。
  *
- * <p>EmbeddingModel 是可选的 — pgvector 未安装时 embedding 不可用，
- * 全文搜索降级运行。
+ * <p>使用 {@link DelegatingEmbeddingModel} — 当用户未在设置页开启语义搜索时，
+ * embed() 返回 null，search() 返回空列表，全文搜索降级运行。
  */
 @Slf4j
 @Component
 public class SemanticSearch {
 
-    private final EmbeddingModel embeddingModel;
+    private final DelegatingEmbeddingModel embeddingModel;
     private final JdbcTemplate jdbc;
 
-    public SemanticSearch(ObjectProvider<EmbeddingModel> embeddingModelProvider, JdbcTemplate jdbc) {
-        this.embeddingModel = embeddingModelProvider.getIfAvailable();
+    public SemanticSearch(DelegatingEmbeddingModel embeddingModel, JdbcTemplate jdbc) {
+        this.embeddingModel = embeddingModel;
         this.jdbc = jdbc;
     }
 

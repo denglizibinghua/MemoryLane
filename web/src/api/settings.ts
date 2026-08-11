@@ -6,6 +6,9 @@ export interface AiSettings {
   apiBase: string
   model: string
   temperature: number
+  embeddingEnabled: boolean
+  embeddingProvider: string
+  embeddingModel: string
 }
 
 export interface ProviderInfo {
@@ -19,6 +22,8 @@ export interface ProviderInfo {
 
 export interface AiSettingsResponse extends AiSettings {
   providers: ProviderInfo[]
+  embeddingActive: boolean
+  embeddingProviders: ProviderInfo[]
 }
 
 export async function getAiSettings(): Promise<AiSettingsResponse> {

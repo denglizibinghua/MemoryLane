@@ -21,14 +21,22 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  # ---- MemoryLane 自有配置 ----
+  memorylane:
+    embedding:
+      # 语义搜索开关：默认关闭（不需要 API key），用户可在设置页自行开启。
+      # 开启后需配置一个 embedding provider（openai/zhipuai/ollama）。
+      enabled: ${MEMORYLANE_EMBEDDING_ENABLED:false}
+
   ai:
     # Provider is selected via the Settings page and stored in the DB
     # (ai_settings table). The active ChatModel is rebuilt on every change, so
     # switching providers takes effect immediately — no restart needed.
     #
-    # IMPORTANT: each provider's auto-configured ChatModel AND EmbeddingModel
-    # beans are disabled. DelegatingChatModel is the single ChatModel in the
-    # context; EmbeddingModel is optional (pgvector not ready yet).
+    # IMPORTANT: each provider's auto-configured ChatModel beans are disabled.
+    # DelegatingChatModel is the single ChatModel in the context.
+    # EmbeddingModel beans are disabled by default — controlled by the
+    # memorylane.embedding.enabled flag above.
     openai:
       api-key: ${LLM_API_KEY:dummy}
       chat:
@@ -37,7 +45,7 @@ spring:
           model: ${LLM_MODEL:gpt-4o-mini}
           temperature: 0.3
       embedding:
-        enabled: false
+        enabled: ${MEMORYLANE_EMBEDDING_ENABLED:false}
       image:
         enabled: false
       audio:
@@ -51,7 +59,7 @@ spring:
       chat:
         enabled: false
       embedding:
-        enabled: false
+        enabled: ${MEMORYLANE_EMBEDDING_ENABLED:false}
 
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:dummy}
@@ -69,7 +77,7 @@ spring:
       chat:
         enabled: false
       embedding:
-        enabled: false
+        enabled: ${MEMORYLANE_EMBEDDING_ENABLED:false}
       image:
         enabled: false
 

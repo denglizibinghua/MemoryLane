@@ -37,6 +37,7 @@ public class DynamicChatModelFactory {
     public static final String PROVIDER_ZHIPUAI = "zhipuai";
     public static final String PROVIDER_MOONSHOT = "moonshot";
     public static final String PROVIDER_DEEPSEEK = "deepseek";
+    public static final String PROVIDER_CUSTOM = "custom";
 
     /** Supported provider ids, in display order. */
     public static final String[] SUPPORTED_PROVIDERS = {
@@ -46,7 +47,8 @@ public class DynamicChatModelFactory {
             PROVIDER_ANTHROPIC,
             PROVIDER_DASHSCOPE,
             PROVIDER_ZHIPUAI,
-            PROVIDER_MOONSHOT
+            PROVIDER_MOONSHOT,
+            PROVIDER_CUSTOM
     };
 
     /**
@@ -69,6 +71,7 @@ public class DynamicChatModelFactory {
             case PROVIDER_ZHIPUAI -> createZhiPu(settings);
             case PROVIDER_MOONSHOT -> createMoonshot(settings);
             case PROVIDER_DEEPSEEK -> createDeepSeek(settings);
+            case PROVIDER_CUSTOM -> createCustom(settings);
             default -> throw new IllegalArgumentException(
                     "Unknown AI provider: " + settings.getProvider() + " (supported: "
                             + String.join(", ", SUPPORTED_PROVIDERS) + ")");
@@ -153,6 +156,24 @@ public class DynamicChatModelFactory {
                 .openAiApi(api)
                 .defaultOptions(OpenAiChatOptions.builder()
                         .model(coalesce(settings.getModel(), "deepseek-chat"))
+                        .temperature(settings.getTemperature())
+                        .build())
+                .build();
+    }
+
+    /**
+     * Custom OpenAI-compatible provider (third-party proxy / self-hosted).
+     * Uses the same OpenAiApi under the hood — the user provides the base URL.
+     */
+    private ChatModel createCustom(AiSettings settings) {
+        OpenAiApi api = OpenAiApi.builder()
+                .apiKey(apiKey(settings.getApiKey()))
+                .baseUrl(coalesce(settings.getApiBase(), "https://api.openai.com"))
+                .build();
+        return OpenAiChatModel.builder()
+                .openAiApi(api)
+                .defaultOptions(OpenAiChatOptions.builder()
+                        .model(coalesce(settings.getModel(), "gpt-4o-mini"))
                         .temperature(settings.getTemperature())
                         .build())
                 .build();

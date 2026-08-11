@@ -43,13 +43,23 @@
         </div>
 
         <template v-else>
-          <el-input
-            v-model="searchQuery"
-            placeholder="搜索记忆..."
-            :prefix-icon="Search"
-            clearable
-            class="search-input"
-          />
+          <div class="search-row">
+            <el-input
+              v-model="searchQuery"
+              placeholder="搜索记忆..."
+              :prefix-icon="Search"
+              clearable
+              class="search-input"
+            />
+            <el-tag
+              size="small"
+              :type="embeddingActive ? '' : 'info'"
+              :effect="embeddingActive ? 'light' : 'plain'"
+              class="search-mode-tag"
+            >
+              {{ embeddingActive ? '混合搜索' : '关键词搜索' }}
+            </el-tag>
+          </div>
 
           <el-empty v-if="!displayResults.length" :description="isSearchMode ? '未找到匹配的记忆' : '暂无可展示的记忆'" />
 
@@ -120,6 +130,7 @@ import { useMemoryStore } from '@/stores/memories'
 import type { SearchResult } from '@/stores/memories'
 import { useContactStore } from '@/stores/contacts'
 import api from '@/api'
+import { getAiSettings } from '@/api/settings'
 
 interface MessageSource {
   id: number
@@ -138,11 +149,18 @@ const errorMsg = ref('')
 const expandedMemoryId = ref<number | null>(null)
 const sourceMessages = ref<MessageSource[]>([])
 const sourcesLoading = ref(false)
+const embeddingActive = ref(false)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-onMounted(() => {
+onMounted(async () => {
   contactStore.fetchAll()
+  try {
+    const settings = await getAiSettings()
+    embeddingActive.value = !!settings.embeddingEnabled
+  } catch {
+    embeddingActive.value = false
+  }
 })
 
 watch(searchQuery, (val) => {
@@ -269,8 +287,21 @@ function categoryLabel(cat: string) {
   margin: 0;
 }
 
-.search-input {
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 24px;
+}
+
+.search-input {
+  flex: 1;
+}
+
+.search-mode-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .memory-card {

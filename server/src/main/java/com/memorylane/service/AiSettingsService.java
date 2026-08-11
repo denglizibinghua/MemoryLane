@@ -1,13 +1,17 @@
 package com.memorylane.service;
 
 import com.memorylane.config.DelegatingChatModel;
+import com.memorylane.config.DelegatingEmbeddingModel;
 import com.memorylane.config.DynamicChatModelFactory;
+import com.memorylane.config.DynamicEmbeddingModelFactory;
 import com.memorylane.entity.AiSettings;
 import com.memorylane.repository.AiSettingsRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,24 +21,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Manages the DB-backed AI provider settings and hot-swaps the active
- * {@link ChatModel} so changes take effect immediately.
+ * Manages the DB-backed AI provider + embedding settings and hot-swaps the
+ * active {@link ChatModel} and {@link EmbeddingModel} so changes take effect
+ * immediately.
  */
 @Service
+@Slf4j
 public class AiSettingsService {
 
     private static final Long SETTINGS_ID = 1L;
 
     private final AiSettingsRepository repository;
     private final DynamicChatModelFactory chatModelFactory;
+    private final DynamicEmbeddingModelFactory embeddingModelFactory;
     private final DelegatingChatModel delegatingChatModel;
+    private final DelegatingEmbeddingModel delegatingEmbeddingModel;
 
     public AiSettingsService(AiSettingsRepository repository,
                              DynamicChatModelFactory chatModelFactory,
-                             DelegatingChatModel delegatingChatModel) {
+                             DynamicEmbeddingModelFactory embeddingModelFactory,
+                             DelegatingChatModel delegatingChatModel,
+                             DelegatingEmbeddingModel delegatingEmbeddingModel) {
         this.repository = repository;
         this.chatModelFactory = chatModelFactory;
+        this.embeddingModelFactory = embeddingModelFactory;
         this.delegatingChatModel = delegatingChatModel;
+        this.delegatingEmbeddingModel = delegatingEmbeddingModel;
     }
 
     /**
@@ -61,6 +73,7 @@ public class AiSettingsService {
             }
         }
         rebuildAndSwap(settings);
+        rebuildEmbedding(settings);
     }
 
     /**
@@ -96,10 +109,20 @@ public class AiSettingsService {
         if (!isBlank(dto.getApiKey()) && !dto.getApiKey().startsWith("***")) {
             settings.setApiKey(dto.getApiKey());
         }
+        if (dto.getEmbeddingEnabled() != null) {
+            settings.setEmbeddingEnabled(dto.getEmbeddingEnabled());
+        }
+        if (dto.getEmbeddingProvider() != null) {
+            settings.setEmbeddingProvider(dto.getEmbeddingProvider());
+        }
+        if (dto.getEmbeddingModel() != null) {
+            settings.setEmbeddingModel(dto.getEmbeddingModel());
+        }
         settings.setUpdatedAt(LocalDateTime.now());
 
         AiSettings saved = repository.save(settings);
         rebuildAndSwap(saved);
+        rebuildEmbedding(saved);
         return buildResponse(saved, true);
     }
 
@@ -110,7 +133,12 @@ public class AiSettingsService {
         result.put("apiBase", settings.getApiBase());
         result.put("model", settings.getModel());
         result.put("temperature", settings.getTemperature());
+        result.put("embeddingEnabled", settings.getEmbeddingEnabled() != null && settings.getEmbeddingEnabled());
+        result.put("embeddingProvider", settings.getEmbeddingProvider());
+        result.put("embeddingModel", settings.getEmbeddingModel());
+        result.put("embeddingActive", delegatingEmbeddingModel.isEnabled());
         result.put("providers", buildProviderInfoList());
+        result.put("embeddingProviders", buildEmbeddingProviderInfoList());
         return result;
     }
 
@@ -122,7 +150,8 @@ public class AiSettingsService {
                 providerInfo("anthropic", "Anthropic", "Claude 3.5 / 4 系列", "claude-3-5-sonnet-latest", "https://api.anthropic.com", true),
                 providerInfo("dashscope", "通义千问", "阿里百炼 DashScope (OpenAI 兼容)", "qwen-plus", "", true),
                 providerInfo("zhipuai", "智谱 GLM", "智谱 AI GLM-4 系列", "glm-4-flash", "", true),
-                providerInfo("moonshot", "Kimi (月之暗面)", "Moonshot v1 系列", "moonshot-v1-8k", "https://api.moonshot.cn", true)
+                providerInfo("moonshot", "Kimi (月之暗面)", "Moonshot v1 系列", "moonshot-v1-8k", "https://api.moonshot.cn", true),
+                providerInfo("custom", "自定义 (OpenAI 兼容)", "第三方中转站 / 自部署 OpenAI 兼容 API", "gpt-4o-mini", "", true)
         );
     }
 
@@ -181,6 +210,33 @@ public class AiSettingsService {
         delegatingChatModel.setDelegate(model);
     }
 
+    /**
+     * Rebuild the EmbeddingModel from DB settings. If embedding is disabled
+     * or the provider is not supported for embeddings, clear the delegate
+     * so SemanticSearch falls back to keyword-only.
+     */
+    private void rebuildEmbedding(AiSettings settings) {
+        if (settings.getEmbeddingEnabled() == null || !settings.getEmbeddingEnabled()) {
+            delegatingEmbeddingModel.setDelegate(null);
+            return;
+        }
+        try {
+            EmbeddingModel model = embeddingModelFactory.create(settings);
+            delegatingEmbeddingModel.setDelegate(model);
+        } catch (Exception e) {
+            log.warn("Failed to build embedding model: {}", e.getMessage());
+            delegatingEmbeddingModel.setDelegate(null);
+        }
+    }
+
+    private List<Map<String, Object>> buildEmbeddingProviderInfoList() {
+        return List.of(
+                providerInfo("openai", "OpenAI", "text-embedding-3-small (1536维)", "text-embedding-3-small", null, true),
+                providerInfo("zhipuai", "智谱 GLM", "embedding-2 (1024维)", "embedding-2", null, true),
+                providerInfo("ollama", "Ollama (本地)", "nomic-embed-text / bge-m3 等", "nomic-embed-text", null, false)
+        );
+    }
+
     private AiSettings loadOrCreateDefault() {
         return repository.findFirst().orElseGet(() -> {
             AiSettings fresh = new AiSettings();
@@ -233,5 +289,8 @@ public class AiSettingsService {
         private String apiBase;
         private String model;
         private Double temperature;
+        private Boolean embeddingEnabled;
+        private String embeddingProvider;
+        private String embeddingModel;
     }
 }
