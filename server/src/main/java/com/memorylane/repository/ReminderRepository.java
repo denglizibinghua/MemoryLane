@@ -17,4 +17,10 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
     List<Reminder> findByContactIdAndStatus(Long contactId, String status);
 
     void deleteByContactId(Long contactId);
+
+    java.util.Optional<Reminder> findByMemoryId(Long memoryId);
+
+    List<Reminder> findByStatusOrderByRemindAtAsc(String status);
+
+    long countByStatus(String status);
 }

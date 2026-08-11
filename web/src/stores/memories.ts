@@ -23,6 +23,12 @@ export interface SearchResult {
   contactName: string
 }
 
+export interface ContactResult {
+  contactId: number
+  contactName: string
+  messageCount: number
+}
+
 export interface ImportResult {
   taskId: string
   stats: {
@@ -30,7 +36,13 @@ export interface ImportResult {
     duplicates: number
     memoriesExtracted: number
   }
-  contactId: number
+  contacts: ContactResult[]
+}
+
+export interface PreviewResult {
+  platform: string
+  speakers: string[]
+  messageCount: number
 }
 
 export const useMemoryStore = defineStore('memories', () => {
@@ -72,9 +84,14 @@ export const useMemoryStore = defineStore('memories', () => {
     }
   }
 
-  async function importText(contactName: string, platform: string, content: string) {
+  async function previewImport(content: string, platform: string): Promise<PreviewResult> {
+    const res = await api.post<PreviewResult>('/import/preview', { content, platform })
+    return res.data
+  }
+
+  async function importText(selfName: string, platform: string, content: string) {
     const res = await api.post<ImportResult>('/import/text', {
-      contactName: contactName || undefined,
+      selfName: selfName || undefined,
       platform,
       content,
     })
@@ -82,5 +99,8 @@ export const useMemoryStore = defineStore('memories', () => {
     return res.data
   }
 
-  return { memories, searchResults, loading, searching, lastImport, fetchByContact, fetchByCategory, searchMemories, importText }
+  return {
+    memories, searchResults, loading, searching, lastImport,
+    fetchByContact, fetchByCategory, searchMemories, previewImport, importText,
+  }
 })

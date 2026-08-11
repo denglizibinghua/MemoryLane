@@ -50,6 +50,9 @@ public class MessageNormalizer {
     /** Bare time: {@code "14:30"}. */
     private static final Pattern BARE_TIME =
             Pattern.compile("^\\s*(\\d{1,2}):(\\d{2})\\s*$");
+    /** WeChat PC Chinese date: {@code "2026年08月10日 17:55"}. */
+    private static final Pattern CN_DATE_TIME =
+            Pattern.compile("^\\s*(\\d{4})年(\\d{1,2})月(\\d{1,2})日\\s+(\\d{1,2}):(\\d{2})\\s*$");
     /** Relative offset: {@code "5分钟前"}, {@code "3小时前"}. */
     private static final Pattern AGO =
             Pattern.compile("^\\s*(\\d+)\\s*(秒|分钟|小时|天)前\\s*$");
@@ -183,6 +186,17 @@ public class MessageNormalizer {
         if (dayPart.matches()) {
             int hour = dayPartHour(dayPart.group(1), Integer.parseInt(dayPart.group(2)));
             return at(LocalDate.now(DEFAULT_ZONE), hour, Integer.parseInt(dayPart.group(3)));
+        }
+
+        // WeChat PC Chinese date: "2026年08月10日 17:55"
+        Matcher cnDate = CN_DATE_TIME.matcher(s);
+        if (cnDate.matches()) {
+            int year = Integer.parseInt(cnDate.group(1));
+            int month = Integer.parseInt(cnDate.group(2));
+            int day = Integer.parseInt(cnDate.group(3));
+            int hour = Integer.parseInt(cnDate.group(4));
+            int minute = Integer.parseInt(cnDate.group(5));
+            return LocalDateTime.of(year, month, day, hour, minute).atZone(DEFAULT_ZONE).toInstant();
         }
 
         // "14:30"

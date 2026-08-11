@@ -29,6 +29,21 @@ const router = createRouter({
       component: () => import('@/views/AdvisorView.vue'),
     },
     {
+      path: '/reminders',
+      name: 'reminders',
+      component: () => import('@/views/RemindersView.vue'),
+    },
+    {
+      path: '/analytics',
+      name: 'analytics',
+      component: () => import('@/views/AnalyticsView.vue'),
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('@/views/ProfileView.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),

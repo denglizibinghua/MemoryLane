@@ -50,6 +50,9 @@ public class Memory {
     // embedding: vector(1536) — handled via native queries for now
     // fts: tsvector — auto-maintained by DB trigger, read-only
 
+    @Column(name = "reminder_scanned_at")
+    private Instant reminderScannedAt;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

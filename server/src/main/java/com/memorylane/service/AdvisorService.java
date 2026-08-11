@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.memorylane.config.DelegatingChatModel;
 import com.memorylane.entity.Contact;
+import com.memorylane.entity.UserProfile;
 import com.memorylane.repository.ContactRepository;
+import com.memorylane.repository.UserProfileRepository;
 import com.memorylane.retrieval.SearchResult;
 import com.memorylane.retrieval.SearchService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +45,7 @@ public class AdvisorService {
 
     private static final String USER_PROMPT_TEMPLATE = """
             对方姓名：%s
-
+            %s
             当前对话上下文：
             %s
 
@@ -59,24 +61,21 @@ public class AdvisorService {
     private final ChatClient chatClient;
     private final SearchService searchService;
     private final ContactRepository contactRepository;
+    private final UserProfileRepository profileRepository;
     private final ObjectMapper objectMapper;
 
     /**
      * 构建专用的回复建议 ChatClient。
-     *
-     * @param delegatingChatModel 热切换 ChatModel（Builder 自动配置依赖它）
-     * @param builder             自动配置的 ChatClient.Builder
-     * @param searchService       关键词记忆检索
-     * @param contactRepository   联系人查询
-     * @param objectMapper        Jackson JSON 解析
      */
     public AdvisorService(DelegatingChatModel delegatingChatModel,
                           ChatClient.Builder builder,
                           SearchService searchService,
                           ContactRepository contactRepository,
+                          UserProfileRepository profileRepository,
                           ObjectMapper objectMapper) {
         this.searchService = searchService;
         this.contactRepository = contactRepository;
+        this.profileRepository = profileRepository;
         this.objectMapper = objectMapper;
         this.chatClient = builder.defaultSystem(ADVISOR_SYSTEM_PROMPT).build();
     }
@@ -93,6 +92,8 @@ public class AdvisorService {
         String contactName = contactRepository.findById(contactId)
                 .map(Contact::getName)
                 .orElse("对方");
+
+        String profileSection = buildProfileSection();
 
         List<SearchResult> memories = searchService.keywordSearch(lastMessage, contactId).stream()
                 .sorted(Comparator.comparingDouble(SearchResult::score).reversed())
@@ -113,7 +114,7 @@ public class AdvisorService {
                 ? "（无）"
                 : String.join("\n", safeContext);
 
-        String userPrompt = String.format(USER_PROMPT_TEMPLATE, contactName, contextText, lastMessage, memoriesText);
+        String userPrompt = String.format(USER_PROMPT_TEMPLATE, contactName, profileSection, contextText, lastMessage, memoriesText);
         log.info("Advisor suggest for contact={}, memories={}", contactId, memories.size());
 
         try {
@@ -199,6 +200,27 @@ public class AdvisorService {
 
     private String toStringOrEmpty(Object v) {
         return v == null ? "" : String.valueOf(v);
+    }
+
+    private String buildProfileSection() {
+        return profileRepository.findFirstByOrderByIdAsc()
+                .map(p -> {
+                    StringBuilder sb = new StringBuilder("## 你的身份\n");
+                    if (p.getDisplayName() != null && !p.getDisplayName().isBlank()) {
+                        sb.append("你是").append(p.getDisplayName()).append("。");
+                    }
+                    if (p.getPersona() != null && !p.getPersona().isBlank()) {
+                        sb.append("\n").append(p.getPersona());
+                    }
+                    if (p.getSpeakingStyle() != null && !p.getSpeakingStyle().isBlank()) {
+                        sb.append("\n说话风格：").append(p.getSpeakingStyle());
+                    }
+                    if (p.getRelationshipDefault() != null && !p.getRelationshipDefault().isBlank()) {
+                        sb.append("\n和聊天对象的关系：").append(p.getRelationshipDefault());
+                    }
+                    return sb.toString();
+                })
+                .orElse("");
     }
 
     public record Reply(String style, String content, String reason) {}

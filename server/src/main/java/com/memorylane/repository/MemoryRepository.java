@@ -25,4 +25,9 @@ public interface MemoryRepository extends JpaRepository<Memory, Long> {
     List<Memory> findByContactId(Long contactId);
 
     void deleteByContactId(Long contactId);
+
+    /** Find promise memories not yet scanned for reminders. */
+    @Query(value = "SELECT * FROM memories WHERE category::text = 'promise' AND valid_until IS NULL AND reminder_scanned_at IS NULL",
+           nativeQuery = true)
+    List<Memory> findAllPromiseMemories();
 }
