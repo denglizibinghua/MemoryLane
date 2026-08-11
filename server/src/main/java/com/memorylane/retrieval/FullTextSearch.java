@@ -67,11 +67,14 @@ public class FullTextSearch {
     }
 
     /**
-     * "张三喜欢吃什么" → "张三 & 喜欢 & 吃"
+     * "发烧" → "发 & 烧"
+     * "lim发烧" → "lim & 发 & 烧"
      */
     static String toTsQuery(String query) {
         if (query == null || query.isBlank()) return "";
-        String cleaned = query.replaceAll("[^\\u4e00-\\u9fa5a-zA-Z0-9]", " ");
+        // 在 CJK 字符两侧插入空格，让每个汉字成为独立查询 token
+        String cjkSplit = query.replaceAll("([\\u4E00-\\u9FFF])", " $1 ");
+        String cleaned = cjkSplit.replaceAll("[^\\u4E00-\\u9FFFa-zA-Z0-9]", " ");
         String[] words = cleaned.trim().split("\\s+");
         if (words.length == 0 || (words.length == 1 && words[0].isEmpty())) return "";
         return String.join(" & ", words);
