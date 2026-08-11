@@ -87,7 +87,12 @@
         <div class="features">
           <el-row :gutter="24">
             <el-col :span="8" v-for="f in features" :key="f.title">
-              <el-card shadow="never" class="feature-card">
+              <el-card
+                shadow="never"
+                class="feature-card"
+                :class="{ clickable: f.route }"
+                @click="f.route && $router.push(f.route)"
+              >
                 <el-icon :size="32" :color="f.color"><component :is="f.icon" /></el-icon>
                 <h3>{{ f.title }}</h3>
                 <p>{{ f.desc }}</p>
@@ -121,18 +126,21 @@ const features = [
     color: '#6366f1',
     title: '多平台支持',
     desc: '自动识别微信、QQ、抖音、短信等聊天格式',
+    route: '/contacts',
   },
   {
     icon: DataAnalysis,
     color: '#a855f7',
     title: '记忆提炼',
     desc: 'AI 自动提取约定、偏好、个人信息等结构化记忆',
+    route: '/memories',
   },
   {
     icon: MagicStick,
     color: '#ec4899',
     title: '军师模式',
     desc: '基于历史聊天记忆，智能生成回复建议',
+    route: '/advisor',
   },
 ]
 
@@ -243,10 +251,19 @@ async function handleImport() {
   text-align: center;
   border: none;
   border-radius: 12px;
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.feature-card:hover {
+.feature-card.clickable {
+  cursor: pointer;
+}
+
+.feature-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+}
+
+.feature-card:not(.clickable):hover {
   transform: translateY(-4px);
 }
 
