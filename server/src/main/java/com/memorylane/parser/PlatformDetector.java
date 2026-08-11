@@ -43,6 +43,12 @@ public class PlatformDetector {
     /** QQ header: {@code "张三 2024-03-15 14:30:00"} (dash-separated date). */
     private static final Pattern QQ_TIME =
             Pattern.compile("^\\s*.+?\\s+\\d{4}-\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
+    /** QQ PC export with QQ ID: {@code "小范闲的御霖军:D: 05-29 12:28:09"}. */
+    private static final Pattern QQ_PC_HEADER =
+            Pattern.compile("^\\s*.+?:\\S+:\\s+\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
+    /** QQ/SMS export (self messages, no QQ ID): {@code "等离子态冰花: 08-08 21:16:21"}. */
+    private static final Pattern QQ_PC_SELF =
+            Pattern.compile("^\\s*.+?:\\s+\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
     /** WeChat PC copy-paste format: {@code "张三 14:30"} (simple name + time, no date). */
     private static final Pattern WE_CHAT_SIMPLE_TIME =
             Pattern.compile("^\\s*.+?\\s+\\d{1,2}:\\d{2}\\s*$");
@@ -88,7 +94,9 @@ public class PlatformDetector {
                     + countLines(rawText, WE_CHAT_DATE)
                     + countLines(rawText, WE_CHAT_SIMPLE_TIME)
                     + countLines(rawText, WE_CHAT_CN_DATE);
-            case QQ -> countLines(rawText, QQ_TIME);
+            case QQ -> countLines(rawText, QQ_TIME)
+                    + countLines(rawText, QQ_PC_HEADER)
+                    + countLines(rawText, QQ_PC_SELF);
             case DOUYIN -> countLines(rawText, DOUYIN_INLINE);
             case SMS -> countSmsBlocks(rawText);
             default -> 0;
@@ -137,6 +145,8 @@ public class PlatformDetector {
                 && !WE_CHAT_SIMPLE_TIME.matcher(t).matches()
                 && !WE_CHAT_CN_DATE.matcher(t).matches()
                 && !QQ_TIME.matcher(t).matches()
+                && !QQ_PC_HEADER.matcher(t).matches()
+                && !QQ_PC_SELF.matcher(t).matches()
                 && !DOUYIN_INLINE.matcher(t).matches();
     }
 }

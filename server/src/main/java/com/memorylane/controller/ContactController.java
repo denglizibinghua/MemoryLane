@@ -3,6 +3,7 @@ package com.memorylane.controller;
 import com.memorylane.entity.Contact;
 import com.memorylane.repository.ContactRepository;
 import com.memorylane.service.ContactService;
+import com.memorylane.service.ContactService.DuplicateGroup;
 import com.memorylane.service.ContactService.MergeResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -49,6 +50,11 @@ public class ContactController {
     @PostMapping("/merge")
     public ResponseEntity<MergeResult> merge(@RequestBody MergeRequest request) {
         return ResponseEntity.ok(contactService.merge(request.targetId(), request.sourceIds()));
+    }
+
+    @GetMapping("/duplicates")
+    public ResponseEntity<List<DuplicateGroup>> findDuplicates() {
+        return ResponseEntity.ok(contactService.findDuplicates());
     }
 
     public record MergeRequest(Long targetId, List<Long> sourceIds) {}

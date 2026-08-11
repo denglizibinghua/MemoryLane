@@ -10,6 +10,19 @@ export interface Contact {
   createdAt: string
 }
 
+export interface ContactCandidate {
+  id: number
+  name: string
+  platform: string
+  messageCount: number
+}
+
+export interface DuplicateGroup {
+  candidates: ContactCandidate[]
+  reason: string
+  confidence: number
+}
+
 export const useContactStore = defineStore('contacts', () => {
   const contacts = ref<Contact[]>([])
   const loading = ref(false)
@@ -45,5 +58,10 @@ export const useContactStore = defineStore('contacts', () => {
     await fetchAll()
   }
 
-  return { contacts, loading, fetchAll, search, create, remove, merge }
+  async function fetchDuplicates(): Promise<DuplicateGroup[]> {
+    const res = await api.get<DuplicateGroup[]>('/contacts/duplicates')
+    return res.data
+  }
+
+  return { contacts, loading, fetchAll, search, create, remove, merge, fetchDuplicates }
 })

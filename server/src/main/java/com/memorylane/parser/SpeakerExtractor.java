@@ -42,6 +42,14 @@ public class SpeakerExtractor {
     /** QQ header with dash date: {@code "张三 2024-03-15 14:30:00"}. */
     private static final Pattern QQ_HEADER =
             Pattern.compile("^\\s*(.+?)\\s+(\\d{4}-\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$");
+    /** QQ PC export with QQ ID: {@code "小范闲的御霖军:D: 05-29 12:28:09"}
+     *  group 1 = speaker, group 2 = MM-DD HH:MM:SS. */
+    private static final Pattern QQ_PC_HEADER =
+            Pattern.compile("^\\s*(.+?):\\S+:\\s+(\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$");
+    /** QQ PC export self messages (no QQ ID): {@code "等离子态冰花: 08-08 21:16:21"}
+     *  group 1 = speaker, group 2 = MM-DD HH:MM:SS. */
+    private static final Pattern QQ_PC_SELF =
+            Pattern.compile("^\\s*(.+?):\\s+(\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$");
     /** Inline speaker separator for Douyin/generic: {@code "张三：周末去不去"}. */
     private static final Pattern INLINE_SEPARATOR =
             Pattern.compile("^\\s*(.+?)\\s*[：:]\\s*(.+?)\\s*$");
@@ -132,7 +140,8 @@ public class SpeakerExtractor {
 
     /**
      * QQ: same block structure as WeChat but headers carry dash-separated
-     * ISO-ish timestamps.
+     * ISO-ish timestamps. Also handles QQ PC export format with
+     * {@code speaker:QQ_ID: MM-DD HH:MM:SS}.
      */
     private List<RawMessage> extractQq(String rawText) {
         List<RawMessage> result = new ArrayList<>();
@@ -140,11 +149,28 @@ public class SpeakerExtractor {
         String currentTime = null;
         List<String> contentLines = new ArrayList<>();
         for (String line : rawText.split("\\R")) {
+            // Try QQ PC export with QQ ID: "小范闲的御霖军:D: 05-29 12:28:09"
+            Matcher pcHeader = QQ_PC_HEADER.matcher(line);
+            if (pcHeader.matches()) {
+                flushCurrent(result, currentSpeaker, currentTime, contentLines);
+                currentSpeaker = pcHeader.group(1).trim();
+                currentTime = pcHeader.group(2);
+                contentLines = new ArrayList<>();
+                continue;
+            }
+            // Try QQ PC export self: "等离子态冰花: 08-08 21:16:21"
+            Matcher pcSelf = QQ_PC_SELF.matcher(line);
+            if (pcSelf.matches()) {
+                flushCurrent(result, currentSpeaker, currentTime, contentLines);
+                currentSpeaker = pcSelf.group(1).trim();
+                currentTime = pcSelf.group(2);
+                contentLines = new ArrayList<>();
+                continue;
+            }
+            // Original QQ format: "张三 2024-03-15 14:30:00"
             Matcher header = QQ_HEADER.matcher(line);
             if (header.matches()) {
-                if (currentSpeaker != null) {
-                    flush(result, currentSpeaker, currentTime, contentLines, PlatformDetector.QQ);
-                }
+                flushCurrent(result, currentSpeaker, currentTime, contentLines);
                 currentSpeaker = header.group(1).trim();
                 currentTime = header.group(2);
                 contentLines = new ArrayList<>();
@@ -154,10 +180,15 @@ public class SpeakerExtractor {
                 contentLines.add(line.trim());
             }
         }
-        if (currentSpeaker != null) {
-            flush(result, currentSpeaker, currentTime, contentLines, PlatformDetector.QQ);
-        }
+        flushCurrent(result, currentSpeaker, currentTime, contentLines);
         return result;
+    }
+
+    private void flushCurrent(List<RawMessage> out, String speaker, String time,
+                               List<String> contentLines) {
+        if (speaker != null) {
+            flush(out, speaker, time, contentLines, PlatformDetector.QQ);
+        }
     }
 
     /**

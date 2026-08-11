@@ -53,6 +53,9 @@ public class MessageNormalizer {
     /** WeChat PC Chinese date: {@code "2026年08月10日 17:55"}. */
     private static final Pattern CN_DATE_TIME =
             Pattern.compile("^\\s*(\\d{4})年(\\d{1,2})月(\\d{1,2})日\\s+(\\d{1,2}):(\\d{2})\\s*$");
+    /** QQ PC export month-day time: {@code "05-29 12:28:09"} → current year. */
+    private static final Pattern MM_DD_TIME =
+            Pattern.compile("^\\s*(\\d{1,2})-(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?\\s*$");
     /** Relative offset: {@code "5分钟前"}, {@code "3小时前"}. */
     private static final Pattern AGO =
             Pattern.compile("^\\s*(\\d+)\\s*(秒|分钟|小时|天)前\\s*$");
@@ -203,6 +206,18 @@ public class MessageNormalizer {
         Matcher bare = BARE_TIME.matcher(s);
         if (bare.matches()) {
             return at(LocalDate.now(DEFAULT_ZONE), Integer.parseInt(bare.group(1)), Integer.parseInt(bare.group(2)));
+        }
+
+        // QQ PC export: "05-29 12:28:09" → current year + month-day + time
+        Matcher mmdd = MM_DD_TIME.matcher(s);
+        if (mmdd.matches()) {
+            int month = Integer.parseInt(mmdd.group(1));
+            int day = Integer.parseInt(mmdd.group(2));
+            int hour = Integer.parseInt(mmdd.group(3));
+            int minute = Integer.parseInt(mmdd.group(4));
+            int second = mmdd.group(5) != null ? Integer.parseInt(mmdd.group(5)) : 0;
+            return LocalDateTime.of(LocalDate.now(DEFAULT_ZONE).getYear(), month, day, hour, minute, second)
+                    .atZone(DEFAULT_ZONE).toInstant();
         }
 
         // Local date-times: "2024-03-15 14:30:00", "2024/3/15 14:30", "2024-03-15T14:30:00"

@@ -12,6 +12,24 @@
       </el-header>
 
       <el-main>
+        <!-- Duplicate warning banner -->
+        <el-alert
+          v-if="duplicateGroups.length > 0"
+          :title="`发现 ${duplicateGroups.length} 组疑似重复联系人`"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="duplicate-banner"
+        >
+          <template #default>
+            <el-button size="small" type="warning" plain @click="showDedupDialog = true">
+              查看并合并
+            </el-button>
+            <el-button size="small" text @click="dismissDuplicates">
+              忽略
+            </el-button>
+          </template>
+        </el-alert>
         <el-input
           v-model="searchQuery"
           placeholder="搜索联系人..."
@@ -126,14 +144,61 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Dedup dialog -->
+    <el-dialog v-model="showDedupDialog" title="疑似重复联系人" width="520px">
+      <p class="merge-hint">以下联系人可能是同一个人，选择每组的保留对象后合并。</p>
+      <div v-for="(group, gIdx) in duplicateGroups" :key="gIdx" class="dedup-group">
+        <div class="dedup-group-header">
+          <span class="dedup-reason">{{ group.reason }}</span>
+          <el-tag size="small" type="warning">
+            {{ Math.round(group.confidence * 100) }}% 置信
+          </el-tag>
+        </div>
+        <div class="dedup-list">
+          <div
+            v-for="c in group.candidates"
+            :key="c.id"
+            class="dedup-item"
+            :class="{ active: dedupTarget[gIdx] === c.id }"
+            @click="dedupTarget[gIdx] = c.id"
+          >
+            <div class="dedup-item-left">
+              <el-avatar :size="32" :icon="UserFilled" />
+              <div>
+                <div class="dedup-name">
+                  {{ c.name }}
+                  <el-tag size="small" :type="platformType(c.platform)" class="dedup-platform-tag">
+                    {{ platformLabel(c.platform) }}
+                  </el-tag>
+                </div>
+                <div class="dedup-msg-count">{{ c.messageCount }} 条消息</div>
+              </div>
+            </div>
+            <el-icon v-if="dedupTarget[gIdx] === c.id" color="#409eff"><Check /></el-icon>
+          </div>
+        </div>
+        <el-button
+          size="small"
+          type="primary"
+          :disabled="!dedupTarget[gIdx]"
+          @click="handleDedupMerge(gIdx)"
+        >
+          合并此组
+        </el-button>
+      </div>
+      <template #footer>
+        <el-button @click="showDedupDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { ArrowLeft, Plus, Search, UserFilled, Close, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useContactStore } from '@/stores/contacts'
+import { useContactStore, type DuplicateGroup } from '@/stores/contacts'
 import type { Contact } from '@/stores/contacts'
 
 const store = useContactStore()
@@ -141,9 +206,12 @@ const store = useContactStore()
 const searchQuery = ref('')
 const showAddDialog = ref(false)
 const showMergeDialog = ref(false)
+const showDedupDialog = ref(false)
 const newContact = ref({ name: '', platform: '' })
 const selectedIds = ref(new Set<number>())
 const mergeTarget = ref<number | null>(null)
+const duplicateGroups = ref<DuplicateGroup[]>([])
+const dedupTarget = reactive<Record<number, number>>({})
 
 const mergeCandidates = computed(() =>
   store.contacts.filter(c => selectedIds.value.has(c.id))
@@ -254,7 +322,46 @@ async function handleAdd() {
   }
 }
 
-onMounted(() => store.fetchAll())
+async function loadDuplicates() {
+  try {
+    duplicateGroups.value = await store.fetchDuplicates()
+    duplicateGroups.value.forEach((_, idx) => {
+      // Default: select the candidate with most messages (index 0, already sorted)
+      if (!dedupTarget[idx] && duplicateGroups.value[idx].candidates.length > 0) {
+        dedupTarget[idx] = duplicateGroups.value[idx].candidates[0].id
+      }
+    })
+  } catch {
+    // duplicates API unavailable — ignore
+  }
+}
+
+function dismissDuplicates() {
+  duplicateGroups.value = []
+}
+
+async function handleDedupMerge(gIdx: number) {
+  const group = duplicateGroups.value[gIdx]
+  const targetId = dedupTarget[gIdx]
+  if (!targetId || !group) return
+  const sourceIds = group.candidates.filter(c => c.id !== targetId).map(c => c.id)
+  if (sourceIds.length === 0) return
+
+  try {
+    await store.merge(targetId, sourceIds)
+    ElMessage.success('合并完成')
+    await store.fetchAll()
+    await loadDuplicates()
+    showDedupDialog.value = duplicateGroups.value.length > 0
+  } catch {
+    ElMessage.error('合并失败')
+  }
+}
+
+onMounted(async () => {
+  await store.fetchAll()
+  await loadDuplicates()
+})
 </script>
 
 <style scoped>
@@ -420,5 +527,82 @@ onMounted(() => store.fetchAll())
 
 .merge-check {
   font-size: 18px;
+}
+
+/* Duplicate Banner */
+.duplicate-banner {
+  margin-bottom: 16px;
+}
+
+/* Dedup Dialog */
+.dedup-group {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.dedup-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.dedup-reason {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.dedup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.dedup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid #e5e7eb;
+  transition: border-color 0.15s;
+}
+
+.dedup-item:hover {
+  border-color: #93c5fd;
+}
+
+.dedup-item.active {
+  border-color: #409eff;
+  background: #eff6ff;
+}
+
+.dedup-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dedup-name {
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dedup-platform-tag {
+  margin-left: 4px;
+}
+
+.dedup-msg-count {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 2px;
 }
 </style>
