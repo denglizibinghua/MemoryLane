@@ -46,7 +46,7 @@ public class SpeakerExtractor {
      *  group 1 = speaker, group 2 = MM-DD HH:MM:SS. */
     private static final Pattern QQ_PC_HEADER =
             Pattern.compile("^\\s*(.+?):\\S+:\\s+(\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$");
-    /** QQ PC export self messages (no QQ ID): {@code "等离子态冰花: 08-08 21:16:21"}
+    /** QQ PC export self messages (no QQ ID): {@code "用户名: 08-08 21:16:21"}
      *  group 1 = speaker, group 2 = MM-DD HH:MM:SS. */
     private static final Pattern QQ_PC_SELF =
             Pattern.compile("^\\s*(.+?):\\s+(\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$");
@@ -158,7 +158,7 @@ public class SpeakerExtractor {
                 contentLines = new ArrayList<>();
                 continue;
             }
-            // Try QQ PC export self: "等离子态冰花: 08-08 21:16:21"
+            // Try QQ PC export self: "用户名: 08-08 21:16:21"
             Matcher pcSelf = QQ_PC_SELF.matcher(line);
             if (pcSelf.matches()) {
                 flushCurrent(result, currentSpeaker, currentTime, contentLines);
@@ -280,7 +280,7 @@ public class SpeakerExtractor {
      * WeChat PC copy-paste with Chinese date: three-line blocks.
      *
      * <pre>{@code
-     * 等离子冰花
+     * 示例用户名
      * 2026年08月10日 17:55
      * 母亲没有
      * }</pre>

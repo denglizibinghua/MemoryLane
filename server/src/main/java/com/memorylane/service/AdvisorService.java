@@ -2,9 +2,9 @@ package com.memorylane.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.memorylane.config.DelegatingChatModel;
 import com.memorylane.entity.Contact;
 import com.memorylane.entity.UserProfile;
+import com.memorylane.repository.AiSettingsRepository;
 import com.memorylane.repository.ContactRepository;
 import com.memorylane.repository.UserProfileRepository;
 import com.memorylane.retrieval.SearchResult;
@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,58 +27,60 @@ import java.util.stream.Collectors;
  * <p>根据对方的历史记忆（关键词检索 top15）和当前对话上下文，调用 LLM
  * 生成自然、得体的回复建议和可继续聊的新话题。
  *
- * <p>使用专用的 {@link ChatClient}（独立 defaultSystem），不复用提取管线的
- * ChatClient Bean，避免其"聊天记录分析助手"的硬编码系统提示词污染生成结果。
+ * <p>系统 & 用户提示词来自 {@link PromptTemplateService}（key={@code advisor.system}
+ * 和 {@code advisor.user}）。模板修改即时生效，无需重启。
  */
 @Slf4j
 @Service
 public class AdvisorService {
 
-    private static final String ADVISOR_SYSTEM_PROMPT = """
-            你是"温同学"的回复助手。你的任务是根据关于对方的历史记忆和当前对话上下文，生成自然、得体的回复建议。
-
-            要求：
-            1. 生成 2-3 条回复建议，每条包含 style（风格标签，如"轻松随性""引用约定""关心体贴"）、content（回复文字，自然口语）、reason（为何这样回复，引用哪条记忆）
-            2. 生成 1-2 条新话题建议（不回复对方时可以聊什么），每条包含 content（话题内容）、reason（为什么）
-            3. 回复风格必须参考对方特征和你们的历史互动
-            4. 只输出 JSON，格式: {"replies":[{"style":"...","content":"...","reason":"..."}],"newTopics":[{"content":"...","reason":"..."}]}
-            """;
-
-    private static final String USER_PROMPT_TEMPLATE = """
-            对方姓名：%s
-            %s
-            当前对话上下文：
-            %s
-
-            对方最近一条消息：%s
-
-            相关历史记忆：
-            %s
-            """;
-
     private static final int TOP_MEMORIES = 10;
     private static final int MAX_MEMORY_CONTENT_LENGTH = 250;
 
+    /**
+     * Style-specific personality injection — prepended to the base system prompt.
+     * The base prompt (from PromptTemplateService) contains the JSON format requirements.
+     */
+    static final Map<String, String> STYLE_PERSONALITY;
+
+    static {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("default", "");
+        m.put("humorous",
+                "你是一个风趣幽默的聊天军师。擅长用俏皮话、梗和适度调侃把对话变得轻松有趣，让对方会心一笑。保持分寸感，不要低俗。\n\n");
+        m.put("cute",
+                "你是一个软萌可爱的聊天军师。说话带撒娇语气，温暖治愈，多用「～」「啦」「嘛」「呢」等语气词，像小猫一样让人心软。\n\n");
+        m.put("gentle",
+                "你是一个温柔体贴的聊天军师。善于倾听，回复细腻温暖，让对方感到被充分理解和关心，像一个知心朋友。\n\n");
+        m.put("cool",
+                "你是一个高冷简洁的聊天军师。话少但句句到位，不废话不啰嗦，偶尔冷笑话，保持高冷但不失礼貌。\n\n");
+        m.put("tsundere",
+                "你是一个傲娇属性的聊天军师。嘴上嫌弃行动关心，先别扭一下再好好说话。用「哼」「才不是关心你」「随便你」等句式，但一定要在最后流露善意。\n\n");
+        STYLE_PERSONALITY = Map.copyOf(m);
+    }
+
     private final ChatClient chatClient;
+    private final PromptTemplateService promptTemplateService;
     private final SearchService searchService;
     private final ContactRepository contactRepository;
     private final UserProfileRepository profileRepository;
+    private final AiSettingsRepository aiSettingsRepository;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 构建专用的回复建议 ChatClient。
-     */
-    public AdvisorService(DelegatingChatModel delegatingChatModel,
-                          ChatClient.Builder builder,
+    public AdvisorService(ChatClient.Builder builder,
+                          PromptTemplateService promptTemplateService,
                           SearchService searchService,
                           ContactRepository contactRepository,
                           UserProfileRepository profileRepository,
+                          AiSettingsRepository aiSettingsRepository,
                           ObjectMapper objectMapper) {
+        this.promptTemplateService = promptTemplateService;
         this.searchService = searchService;
         this.contactRepository = contactRepository;
         this.profileRepository = profileRepository;
+        this.aiSettingsRepository = aiSettingsRepository;
         this.objectMapper = objectMapper;
-        this.chatClient = builder.defaultSystem(ADVISOR_SYSTEM_PROMPT).build();
+        this.chatClient = builder.build();
     }
 
     /**
@@ -114,11 +117,29 @@ public class AdvisorService {
                 ? "（无）"
                 : String.join("\n", safeContext);
 
-        String userPrompt = String.format(USER_PROMPT_TEMPLATE, contactName, profileSection, contextText, lastMessage, memoriesText);
+        String basePrompt = promptTemplateService.getTemplate("advisor.system");
+        String userName = profileRepository.findFirstByOrderByIdAsc()
+                .map(p -> p.getDisplayName())
+                .filter(n -> !n.isBlank())
+                .orElse("用户");
+        String personality = STYLE_PERSONALITY.getOrDefault(
+                aiSettingsRepository.findFirst().map(s -> s.getAdvisorStyle()).orElse("default"),
+                "");
+        String systemPrompt = (personality + basePrompt).replace("{userName}", userName);
+        String userTemplate = promptTemplateService.getTemplate("advisor.user");
+        String userPrompt = userTemplate
+                .replace("{contactName}", contactName)
+                .replace("{profileSection}", profileSection)
+                .replace("{context}", contextText)
+                .replace("{lastMessage}", lastMessage)
+                .replace("{memories}", memoriesText);
         log.info("Advisor suggest for contact={}, memories={}", contactId, memories.size());
 
         try {
-            String response = chatClient.prompt().user(u -> u.text(userPrompt)).call().content();
+            String response = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(u -> u.text(userPrompt))
+                    .call().content();
             log.info("Advisor response: {}", response);
             return parseSuggest(response);
         } catch (Exception e) {

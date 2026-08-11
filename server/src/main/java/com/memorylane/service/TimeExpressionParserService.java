@@ -2,7 +2,6 @@ package com.memorylane.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.memorylane.config.DelegatingChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -17,51 +16,28 @@ import java.util.Map;
  * LLM-based time-expression parser for promise-category memories.
  *
  * <p>Extracts event time and generates a reminder timestamp from natural-language
- * expressions like "下周去爬山", "明天下午三点", "月底还钱". Uses a dedicated
- * {@link ChatClient} with its own system prompt, mirroring {@link AdvisorService}'s
- * constructor pattern to avoid polluting the extraction-pipeline prompts.
+ * expressions like "下周去爬山", "明天下午三点", "月底还钱".
+ *
+ * <p>系统 & 用户提示词来自 {@link PromptTemplateService}（key={@code time_parser.system}
+ * 和 {@code time_parser.user}）。模板修改即时生效，无需重启。
  */
 @Slf4j
 @Service
 public class TimeExpressionParserService {
 
-    private static final String SYSTEM_PROMPT = """
-            你是一个时间解析助手。给定一条约定（promise）描述，提取其中的时间信息。
-
-            要求：
-            1. 识别约定文字中的时间表达（如"明天""下周""下个月""月底""周X""X月X日""X点"等）
-            2. 解析出事件发生时间 eventTime，用 ISO 8601 格式（如 2026-08-16T09:00:00+08:00）
-            3. 提醒时间 remindAt 默认比 eventTime 早 30 分钟，也用 ISO 8601 格式
-            4. 提取一个简短的提醒标题 title（如"爬山""还钱""吃饭"），结合联系人姓名
-            5. 提取原始文字中关于时间的描述片段 sourceText
-            6. 如果约定里没有任何时间信息或无法解析，hasTime 设为 false，其余字段随意填充
-            7. 只输出 JSON，不要任何解释文字。格式：
-               {"hasTime":true,"memoryId":0,"title":"爬山","eventTime":"2026-08-16T09:00:00+08:00","remindAt":"...","sourceText":"下周去爬山"}
-            """;
-
-    private static final String USER_PROMPT_PREFIX = """
-            待解析的约定记忆：
-            记忆ID：""";
-    private static final String USER_PROMPT_CONTACT = "\n联系人：";
-    private static final String USER_PROMPT_CONTENT = "\n内容：";
-    private static final String USER_PROMPT_SUFFIX = """
-
-            当前时间：%s
-
-            请提取时间信息，返回 JSON。
-            """;
-
     private static final DateTimeFormatter ISO_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX").withZone(ZoneId.of("Asia/Shanghai"));
 
     private final ChatClient chatClient;
+    private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
 
-    public TimeExpressionParserService(DelegatingChatModel delegatingChatModel,
-                                       ChatClient.Builder builder,
+    public TimeExpressionParserService(ChatClient.Builder builder,
+                                       PromptTemplateService promptTemplateService,
                                        ObjectMapper objectMapper) {
+        this.promptTemplateService = promptTemplateService;
         this.objectMapper = objectMapper;
-        this.chatClient = builder.defaultSystem(SYSTEM_PROMPT).build();
+        this.chatClient = builder.build();
     }
 
     /**
@@ -75,15 +51,20 @@ public class TimeExpressionParserService {
      */
     public ParsedTime parse(long memoryId, String content, String contactName) {
         String safeContent = sanitizeContent(content);
-        // Concatenation instead of String.format to avoid crash on '%' in content
-        String userPrompt = USER_PROMPT_PREFIX + memoryId
-                + USER_PROMPT_CONTACT + contactName
-                + USER_PROMPT_CONTENT + safeContent
-                + String.format(USER_PROMPT_SUFFIX, ISO_FORMATTER.format(Instant.now()));
+        String systemPrompt = promptTemplateService.getTemplate("time_parser.system");
+        String userTemplate = promptTemplateService.getTemplate("time_parser.user");
+        String userPrompt = userTemplate
+                .replace("{memoryId}", String.valueOf(memoryId))
+                .replace("{contactName}", contactName)
+                .replace("{content}", safeContent)
+                .replace("{now}", ISO_FORMATTER.format(Instant.now()));
 
         log.info("Time parse for memory={}, contact={}", memoryId, contactName);
         try {
-            String response = chatClient.prompt().user(u -> u.text(userPrompt)).call().content();
+            String response = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(u -> u.text(userPrompt))
+                    .call().content();
             log.info("Time parse response: {}", response);
             return parseResponse(response, memoryId);
         } catch (Exception e) {

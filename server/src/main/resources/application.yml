@@ -27,6 +27,14 @@ spring:
       # 语义搜索开关：默认关闭（不需要 API key），用户可在设置页自行开启。
       # 开启后需配置一个 embedding provider（openai/zhipuai/ollama）。
       enabled: ${MEMORYLANE_EMBEDDING_ENABLED:false}
+    ocr:
+      # Tesseract offline OCR fallback: when LLM OCR fails (timeout, no provider, etc.),
+      # try Tesseract as a free offline alternative. Set to false to disable.
+      fallback-enabled: ${MEMORYLANE_OCR_FALLBACK_ENABLED:true}
+      tesseract:
+        # Parent directory of tessdata/ folder containing traineddata files.
+        # Defaults to ./tessdata (i.e. <project-root>/tessdata/tessdata/chi_sim.traineddata)
+        data-path: ${MEMORYLANE_TESSERACT_DATA_PATH:./tessdata}
 
   ai:
     # Provider is selected via the Settings page and stored in the DB

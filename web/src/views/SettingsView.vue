@@ -72,6 +72,19 @@
                 :show-input-controls="false"
               />
             </el-form-item>
+
+            <!-- Advisor Style -->
+            <el-form-item label="AI 回复风格">
+              <el-select v-model="form.advisorStyle" placeholder="选择风格" style="width: 100%">
+                <el-option
+                  v-for="s in styleOptions"
+                  :key="s.value"
+                  :label="s.label"
+                  :value="s.value"
+                />
+              </el-select>
+              <div class="input-hint">{{ currentStyleDesc }}</div>
+            </el-form-item>
           </el-form>
 
           <!-- Test Result -->
@@ -140,6 +153,98 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <!-- Advanced: Prompt Templates & OCR -->
+        <el-collapse class="advanced-collapse">
+          <el-collapse-item title="高级设置" name="advanced">
+
+        <!-- Prompt Templates -->
+        <el-card v-loading="templateLoading" class="settings-card prompt-card" shadow="hover">
+          <template #header>
+            <div class="embedding-card-header">
+              <span class="embedding-card-title">Prompt 模板</span>
+              <el-tag :type="editedCount > 0 ? 'warning' : 'info'" size="small" effect="plain">
+                {{ editedCount > 0 ? `已编辑 ${editedCount} 个` : '默认' }}
+              </el-tag>
+            </div>
+          </template>
+
+          <el-collapse v-model="activeTemplates" class="template-list">
+            <el-collapse-item
+              v-for="tmpl in templates"
+              :key="tmpl.key"
+              :name="tmpl.key"
+            >
+              <template #title>
+                <span class="template-item-name">{{ tmpl.name }}</span>
+                <el-tag
+                  v-if="isTemplateEdited(tmpl.key)"
+                  size="small"
+                  type="warning"
+                  effect="plain"
+                  class="template-edited-tag"
+                >
+                  已修改
+                </el-tag>
+              </template>
+              <p class="template-desc" v-if="tmpl.description">{{ tmpl.description }}</p>
+              <el-input
+                v-model="templateEdits[tmpl.key]"
+                type="textarea"
+                :rows="10"
+                class="template-textarea"
+              />
+              <div class="template-actions">
+                <el-button
+                  size="small"
+                  text
+                  type="danger"
+                  :disabled="!isTemplateEdited(tmpl.key)"
+                  @click="resetTemplate(tmpl.key)"
+                >
+                  恢复默认
+                </el-button>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+
+          <div class="action-row" style="margin-top: 20px">
+            <el-button type="primary" :loading="savingTemplates" @click="handleSaveTemplates">
+              保存模板
+            </el-button>
+          </div>
+        </el-card>
+
+        <!-- OCR Fallback Status -->
+        <el-card class="settings-card ocr-card" shadow="hover">
+          <template #header>
+            <div class="embedding-card-header">
+              <span class="embedding-card-title">截图 OCR</span>
+              <el-tag
+                :type="ocrStatus.tesseractAvailable ? 'success' : 'danger'"
+                size="small"
+                effect="plain"
+              >
+                {{ ocrStatus.tesseractAvailable ? '离线可用' : '离线不可用' }}
+              </el-tag>
+            </div>
+          </template>
+          <p class="ocr-desc">
+            截图导入优先使用 AI 视觉模型识别文字。如果 AI 失败（超时/无视觉能力/未配置），
+            自动切换到 Tesseract 离线 OCR 作为备用。
+          </p>
+          <div class="ocr-info">
+            <el-tag :type="ocrStatus.fallbackEnabled ? 'success' : 'info'" size="small">
+              自动回退：{{ ocrStatus.fallbackEnabled ? '已启用' : '已禁用' }}
+            </el-tag>
+            <span v-if="!ocrStatus.tesseractAvailable" class="ocr-hint">
+              需在 server/tessdata/tessdata/ 下放置 chi_sim.traineddata
+            </span>
+          </div>
+        </el-card>
+
+          </el-collapse-item>
+        </el-collapse>
       </el-main>
     </el-container>
   </div>
@@ -153,8 +258,13 @@ import {
   getAiSettings,
   updateAiSettings,
   testAiConnection,
+  getPromptTemplates,
+  updatePromptTemplates,
+  getOcrStatus,
   type AiSettings,
   type ProviderInfo,
+  type PromptTemplateMeta,
+  type OcrStatus,
 } from '@/api/settings'
 
 interface ProviderDefault {
@@ -190,6 +300,7 @@ const form = ref<AiSettings>({
   embeddingEnabled: false,
   embeddingProvider: 'openai',
   embeddingModel: '',
+  advisorStyle: 'default',
 })
 
 const serverProviders = ref<ProviderInfo[]>([])
@@ -273,6 +384,20 @@ function onEmbeddingProviderChange(newProvider: string) {
   }
 }
 
+const styleOptions = [
+  { value: 'default', label: '默认', desc: '自然得体，不添加额外风格' },
+  { value: 'humorous', label: '😄 幽默', desc: '风趣俏皮，用梗和调侃让对话轻松有趣' },
+  { value: 'cute', label: '🐱 可爱', desc: '软萌治愈，带撒娇语气和温暖的回应' },
+  { value: 'gentle', label: '🌸 温柔', desc: '细腻体贴，让对方感到被理解和关心' },
+  { value: 'cool', label: '🧊 高冷', desc: '话少但到位，简洁有力不啰嗦' },
+  { value: 'tsundere', label: '😤 傲娇', desc: '嘴上嫌弃行动关心，傲娇属性拉满' },
+]
+
+const currentStyleDesc = computed(() => {
+  const found = styleOptions.find(s => s.value === form.value.advisorStyle)
+  return found ? found.desc : ''
+})
+
 async function loadSettings() {
   loading.value = true
   try {
@@ -287,6 +412,7 @@ async function loadSettings() {
     form.value.embeddingEnabled = data.embeddingEnabled ?? false
     form.value.embeddingProvider = data.embeddingProvider || 'openai'
     form.value.embeddingModel = data.embeddingModel || ''
+    form.value.advisorStyle = data.advisorStyle || 'default'
     embeddingActive.value = data.embeddingActive ?? false
     if (data.embeddingProviders && data.embeddingProviders.length > 0) {
       embeddingProviders.value = data.embeddingProviders
@@ -355,12 +481,99 @@ function buildPayload(): AiSettings {
     embeddingEnabled: form.value.embeddingEnabled,
     embeddingProvider: form.value.embeddingProvider,
     embeddingModel: form.value.embeddingModel,
+    advisorStyle: form.value.advisorStyle,
+  }
+}
+
+// --- Prompt Templates ---
+
+const templates = ref<PromptTemplateMeta[]>([])
+const templateEdits = ref<Record<string, string>>({})
+const templateOriginals = ref<Record<string, string>>({})
+const activeTemplates = ref<string[]>([])
+const templateLoading = ref(false)
+const savingTemplates = ref(false)
+
+const editedCount = computed(() => {
+  return templates.value.filter((t) => isTemplateEdited(t.key)).length
+})
+
+function isTemplateEdited(key: string): boolean {
+  const original = templateOriginals.value[key]
+  const current = templateEdits.value[key]
+  return original !== undefined && current !== undefined && original !== current
+}
+
+async function loadTemplates() {
+  templateLoading.value = true
+  try {
+    const data = await getPromptTemplates()
+    const list = Object.values(data) as PromptTemplateMeta[]
+    templates.value = list
+    const edits: Record<string, string> = {}
+    const originals: Record<string, string> = {}
+    for (const t of list) {
+      edits[t.key] = t.content
+      originals[t.key] = t.content
+    }
+    templateEdits.value = edits
+    templateOriginals.value = originals
+  } catch (e: any) {
+    ElMessage.error('加载 Prompt 模板失败：' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } finally {
+    templateLoading.value = false
+  }
+}
+
+function resetTemplate(key: string) {
+  templateEdits.value[key] = templateOriginals.value[key]
+}
+
+async function handleSaveTemplates() {
+  savingTemplates.value = true
+  try {
+    // Build diff: only send changed templates
+    const updates: Record<string, string> = {}
+    for (const t of templates.value) {
+      if (isTemplateEdited(t.key)) {
+        updates[t.key] = templateEdits.value[t.key]
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      ElMessage.info('没有修改，无需保存')
+      return
+    }
+    await updatePromptTemplates(updates)
+    // Update originals to reflect saved state
+    for (const key of Object.keys(updates)) {
+      templateOriginals.value[key] = templateEdits.value[key]
+    }
+    ElMessage.success('Prompt 模板已保存')
+  } catch (e: any) {
+    ElMessage.error('保存模板失败：' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } finally {
+    savingTemplates.value = false
   }
 }
 
 onMounted(() => {
   loadSettings()
+  loadTemplates()
+  loadOcrStatus()
 })
+
+// --- OCR Status ---
+
+const ocrStatus = ref<OcrStatus>({ tesseractAvailable: false, fallbackEnabled: true })
+
+async function loadOcrStatus() {
+  try {
+    const data = await getOcrStatus()
+    ocrStatus.value = data
+  } catch {
+    // OCR status is informational — fail silently
+  }
+}
 </script>
 
 <style scoped>
@@ -471,5 +684,90 @@ onMounted(() => {
   font-size: 17px;
   font-weight: 700;
   color: #1e1b4b;
+}
+
+.prompt-card {
+  max-width: 640px;
+  margin: 24px auto 0;
+  border-radius: 12px;
+}
+
+.template-list :deep(.el-collapse-item__header) {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  padding: 12px 0;
+}
+
+.template-item-name {
+  flex: 1;
+}
+
+.template-edited-tag {
+  margin-left: 8px;
+}
+
+.template-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.template-textarea :deep(.el-textarea__inner) {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.template-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.ocr-card {
+  max-width: 640px;
+  margin: 24px auto 0;
+  border-radius: 12px;
+}
+
+.ocr-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.ocr-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ocr-hint {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.advanced-collapse {
+  max-width: 640px;
+  margin: 24px auto 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.advanced-collapse :deep(.el-collapse-item__header) {
+  font-size: 15px;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 14px 20px;
+  background: #f9fafb;
+  border-radius: 12px;
+}
+
+.advanced-collapse :deep(.el-collapse-item__wrap) {
+  border: none;
 }
 </style>

@@ -27,7 +27,7 @@
           粘贴聊天记录或截图，AI 自动识别对话对象、提取关键记忆，在你需要时给出回复建议。
         </p>
 
-        <div class="import-area">
+        <div class="import-section">
           <el-card class="import-card" shadow="hover">
             <template #header>
               <span><el-icon><EditPen /></el-icon> 粘贴文本</span>
@@ -36,9 +36,10 @@
             <el-input
               v-model="pasteText"
               type="textarea"
-              :rows="6"
+              :rows="10"
               placeholder="在此粘贴聊天记录...&#10;&#10;支持微信、QQ、抖音等常见格式"
               :disabled="previewLoading || importing"
+              class="paste-textarea"
             />
 
             <!-- Step 1: Preview -->
@@ -90,7 +91,13 @@
               </div>
             </div>
           </el-card>
+        </div>
 
+        <div class="section-divider">
+          <span>或者</span>
+        </div>
+
+        <div class="import-section">
           <el-card class="import-card screenshot-card" shadow="hover">
             <template #header>
               <span><el-icon><Camera /></el-icon> 截图导入</span>
@@ -561,27 +568,52 @@ function providerLabel(key: string): string {
   line-height: 1.7;
 }
 
-.import-card {
-  max-width: 640px;
-  margin: 0 auto 24px;
-  border-radius: 12px;
-  flex: 1;
-  min-width: 0;
+.import-section {
+  max-width: 720px;
+  margin: 0 auto 0;
 }
 
-.import-area {
+.import-card {
+  border-radius: 12px;
+}
+
+.import-card :deep(.el-card__body) {
   display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  max-width: 960px;
-  margin: 0 auto 24px;
+  flex-direction: column;
+}
+
+.paste-textarea {
+  flex: 1;
+}
+
+.paste-textarea :deep(.el-textarea__inner) {
+  min-height: 240px;
+  resize: vertical;
+}
+
+.section-divider {
+  display: flex;
+  align-items: center;
+  max-width: 720px;
+  margin: 20px auto;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.section-divider span {
+  padding: 0 16px;
 }
 
 @media (max-width: 768px) {
-  .import-area {
-    flex-direction: column;
-  }
-  .import-card {
+  .import-section {
     max-width: 100%;
   }
 }
@@ -708,7 +740,7 @@ function providerLabel(key: string): string {
 
 .features {
   max-width: 960px;
-  margin: 0 auto;
+  margin: 48px auto 0;
 }
 
 .feature-grid {

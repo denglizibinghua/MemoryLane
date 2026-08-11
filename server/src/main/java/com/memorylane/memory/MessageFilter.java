@@ -78,7 +78,7 @@ public final class MessageFilter {
 
     /**
      * 从 "id:speaker:content" 格式中提取纯内容用于过滤。
-     * 输入如 "42:等离子冰花:好的好的" → 提取 "好的好的" 做校验。
+     * 输入如 "42:用户名:好的好的" → 提取 "好的好的" 做校验。
      */
     public static boolean isValidLabeled(String labeled) {
         int secondColon = labeled.indexOf(':', labeled.indexOf(':') + 1);

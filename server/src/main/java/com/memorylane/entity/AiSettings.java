@@ -52,6 +52,9 @@ public class AiSettings {
     @Column(name = "embedding_model", length = 100)
     private String embeddingModel;
 
+    @Column(name = "advisor_style", length = 20)
+    private String advisorStyle;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

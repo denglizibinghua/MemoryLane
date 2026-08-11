@@ -118,6 +118,9 @@ public class AiSettingsService {
         if (dto.getEmbeddingModel() != null) {
             settings.setEmbeddingModel(dto.getEmbeddingModel());
         }
+        if (!isBlank(dto.getAdvisorStyle())) {
+            settings.setAdvisorStyle(dto.getAdvisorStyle());
+        }
         settings.setUpdatedAt(LocalDateTime.now());
 
         AiSettings saved = repository.save(settings);
@@ -137,6 +140,7 @@ public class AiSettingsService {
         result.put("embeddingProvider", settings.getEmbeddingProvider());
         result.put("embeddingModel", settings.getEmbeddingModel());
         result.put("embeddingActive", delegatingEmbeddingModel.isEnabled());
+        result.put("advisorStyle", settings.getAdvisorStyle() != null ? settings.getAdvisorStyle() : "default");
         result.put("providers", buildProviderInfoList());
         result.put("embeddingProviders", buildEmbeddingProviderInfoList());
         return result;
@@ -292,5 +296,6 @@ public class AiSettingsService {
         private Boolean embeddingEnabled;
         private String embeddingProvider;
         private String embeddingModel;
+        private String advisorStyle;
     }
 }

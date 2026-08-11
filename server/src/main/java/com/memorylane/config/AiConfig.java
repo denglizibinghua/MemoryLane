@@ -31,11 +31,15 @@ public class AiConfig {
         return new DelegatingEmbeddingModel();
     }
 
+    /**
+     * Shared ChatClient bean — no hardcoded defaultSystem.
+     *
+     * <p>System prompts are now served by {@link com.memorylane.service.PromptTemplateService}
+     * and injected per-call by consumers (ImportanceClassifier, FactExtractor).
+     * This ensures template edits take effect immediately without restart.
+     */
     @Bean
     public ChatClient chatClient(DelegatingChatModel delegatingChatModel, ChatClient.Builder builder) {
-        return builder
-                .defaultSystem("你是一个聊天记录分析助手，负责从对话中提取结构化信息。"
-                        + "只输出要求的 JSON 格式，不要额外解释。")
-                .build();
+        return builder.build();
     }
 }

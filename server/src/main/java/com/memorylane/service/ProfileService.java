@@ -2,7 +2,6 @@ package com.memorylane.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.memorylane.config.DelegatingChatModel;
 import com.memorylane.entity.UserProfile;
 import com.memorylane.repository.MessageRepository;
 import com.memorylane.repository.UserProfileRepository;
@@ -21,21 +20,13 @@ import java.util.stream.Collectors;
  * <p>Single-row design: one user, one profile. AI analysis reads all
  * self-speaker messages and asks the LLM to infer persona, speaking style,
  * and typical relationship context.
+ *
+ * <p>系统 & 用户提示词来自 {@link PromptTemplateService}（key={@code profile.analyze.system}
+ * 和 {@code profile.analyze.user}）。模板修改即时生效，无需重启。
  */
 @Slf4j
 @Service
 public class ProfileService {
-
-    private static final String ANALYZE_PROMPT = """
-            分析以下聊天记录中"我"（self）的说话风格、性格特征、身份信息。
-
-            要求：
-            1. persona: 一句话描述身份和性格（如"22岁男大学生，青岛上学，计算机专业，性格直接幽默"）
-            2. speakingStyle: 说话风格标签（如"幽默/直接/温柔/土味/优雅/理性"）
-            3. relationship: 和大多数聊天对象的关系类型（如"同学/朋友/暧昧/同事"）
-
-            只输出JSON: {"persona":"...","speakingStyle":"...","relationship":"..."}
-            """;
 
     private static final int MAX_MSG_LENGTH = 120;
     private static final int MAX_MSGS = 80;
@@ -43,17 +34,19 @@ public class ProfileService {
     private final UserProfileRepository profileRepo;
     private final MessageRepository messageRepo;
     private final ChatClient chatClient;
+    private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
 
     public ProfileService(UserProfileRepository profileRepo,
                           MessageRepository messageRepo,
-                          DelegatingChatModel delegatingChatModel,
                           ChatClient.Builder builder,
+                          PromptTemplateService promptTemplateService,
                           ObjectMapper objectMapper) {
         this.profileRepo = profileRepo;
         this.messageRepo = messageRepo;
+        this.promptTemplateService = promptTemplateService;
         this.objectMapper = objectMapper;
-        this.chatClient = builder.defaultSystem(ANALYZE_PROMPT).build();
+        this.chatClient = builder.build();
     }
 
     @Transactional(readOnly = true)
@@ -97,8 +90,11 @@ public class ProfileService {
         log.info("Profile analyze: {} self messages", lines.size());
 
         try {
+            String systemPrompt = promptTemplateService.getTemplate("profile.analyze.system");
+            String userTemplate = promptTemplateService.getTemplate("profile.analyze.user");
             String response = chatClient.prompt()
-                    .user(u -> u.text("我的聊天记录：\n" + sample))
+                    .system(systemPrompt)
+                    .user(u -> u.text(userTemplate.replace("{sample}", sample)))
                     .call().content();
             log.info("Profile analyze response: {}", response);
 

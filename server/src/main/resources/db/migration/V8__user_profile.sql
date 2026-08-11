@@ -5,7 +5,7 @@
 
 CREATE TABLE IF NOT EXISTS user_profile (
     id                    BIGSERIAL PRIMARY KEY,
-    display_name          VARCHAR(100),               -- "温同学" / "等离子冰花"
+    display_name          VARCHAR(100),               -- user's chosen display name
     persona               TEXT,                        -- free-form self-description
     speaking_style        VARCHAR(100),                -- "直接/幽默/温柔/土味/..."
     relationship_default  VARCHAR(200),                -- "和大多数人是同学/朋友/暧昧..."

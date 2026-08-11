@@ -19,7 +19,7 @@
 
               <el-form label-position="top">
                 <el-form-item label="显示名称">
-                  <el-input v-model="form.displayName" placeholder="如：温同学、等离子冰花" />
+                  <el-input v-model="form.displayName" placeholder="给自己起个名字" />
                 </el-form-item>
                 <el-form-item label="个人描述">
                   <el-input

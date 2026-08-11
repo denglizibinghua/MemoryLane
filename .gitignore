@@ -37,3 +37,6 @@ docker-compose.override.yml
 
 # AI session handoff
 .handoff/
+
+# Tesseract OCR models (large binary files)
+server/tessdata/

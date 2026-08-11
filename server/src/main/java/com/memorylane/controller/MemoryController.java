@@ -50,7 +50,7 @@ public class MemoryController {
     public ResponseEntity<List<SearchResult>> search(
             @RequestParam String q,
             @RequestParam(required = false) Long contactId) {
-        return ResponseEntity.ok(searchService.keywordSearch(q, contactId));
+        return ResponseEntity.ok(searchService.hybridSearch(q, contactId));
     }
 
     @GetMapping("/{id}/sources")

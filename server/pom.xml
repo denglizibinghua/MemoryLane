@@ -105,6 +105,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- OCR — Tesseract fallback for offline screenshot recognition -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.19.0</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -9,6 +9,7 @@ export interface AiSettings {
   embeddingEnabled: boolean
   embeddingProvider: string
   embeddingModel: string
+  advisorStyle: string
 }
 
 export interface ProviderInfo {
@@ -38,5 +39,37 @@ export async function updateAiSettings(settings: AiSettings): Promise<AiSettings
 
 export async function testAiConnection(settings: AiSettings): Promise<{ success: boolean; message: string }> {
   const res = await api.post('/settings/ai/test', settings)
+  return res.data
+}
+
+// --- Prompt Templates ---
+
+export interface PromptTemplateMeta {
+  key: string
+  name: string
+  description: string
+  isBuiltin: boolean
+  content: string
+}
+
+export async function getPromptTemplates(): Promise<Record<string, PromptTemplateMeta>> {
+  const res = await api.get('/settings/prompts')
+  return res.data
+}
+
+export async function updatePromptTemplates(updates: Record<string, string>): Promise<Record<string, string>> {
+  const res = await api.put('/settings/prompts', updates)
+  return res.data
+}
+
+// --- OCR Status ---
+
+export interface OcrStatus {
+  tesseractAvailable: boolean
+  fallbackEnabled: boolean
+}
+
+export async function getOcrStatus(): Promise<OcrStatus> {
+  const res = await api.get('/settings/ocr-status')
   return res.data
 }

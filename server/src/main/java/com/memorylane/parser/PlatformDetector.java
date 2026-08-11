@@ -46,7 +46,7 @@ public class PlatformDetector {
     /** QQ PC export with QQ ID: {@code "小范闲的御霖军:D: 05-29 12:28:09"}. */
     private static final Pattern QQ_PC_HEADER =
             Pattern.compile("^\\s*.+?:\\S+:\\s+\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
-    /** QQ/SMS export (self messages, no QQ ID): {@code "等离子态冰花: 08-08 21:16:21"}. */
+    /** QQ/SMS export (self messages, no QQ ID): {@code "用户名: 08-08 21:16:21"}. */
     private static final Pattern QQ_PC_SELF =
             Pattern.compile("^\\s*.+?:\\s+\\d{1,2}-\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*$");
     /** WeChat PC copy-paste format: {@code "张三 14:30"} (simple name + time, no date). */

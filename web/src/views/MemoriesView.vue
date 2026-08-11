@@ -157,7 +157,7 @@ onMounted(async () => {
   contactStore.fetchAll()
   try {
     const settings = await getAiSettings()
-    embeddingActive.value = !!settings.embeddingEnabled
+    embeddingActive.value = !!settings.embeddingActive
   } catch {
     embeddingActive.value = false
   }

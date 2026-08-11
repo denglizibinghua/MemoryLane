@@ -1,5 +1,6 @@
 package com.memorylane.memory;
 
+import com.memorylane.service.PromptTemplateService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
@@ -15,29 +16,21 @@ import java.util.List;
  * </ul>
  *
  * <p>输入为消息 ID 和内容列表，返回消息 ID 到重要度的映射。
+ *
+ * <p>系统提示词来自 {@link PromptTemplateService}（key={@code pipeline.system}），
+ * 用户提示词来自 key={@code importance.user}，占位符 {@code {messages}} 替换为
+ * 消息行列表。模板修改即时生效，无需重启。
  */
 @Component
 public class ImportanceClassifier {
 
     private final ChatClient chatClient;
+    private final PromptTemplateService promptTemplateService;
 
-    public ImportanceClassifier(ChatClient chatClient) {
+    public ImportanceClassifier(ChatClient chatClient, PromptTemplateService promptTemplateService) {
         this.chatClient = chatClient;
+        this.promptTemplateService = promptTemplateService;
     }
-
-    private static final String PROMPT = """
-            分析以下聊天消息，按重要性分为三类：
-
-            1 (日常寒暄) — 打招呼、表情包、无信息量的回应
-            2 (有价值) — 包含具体信息、计划、偏好、事件
-            3 (关键记忆) — 重要约定、个人信息变更、感情表达、长期承诺
-
-            输出 JSON 数组，只输出有重要性的消息（2 或 3）：
-            [{"id": 消息编号, "importance": 2}, ...]
-
-            消息列表：
-            %s
-            """;
 
     /**
      * 批处理消息重要性分类。
@@ -46,9 +39,12 @@ public class ImportanceClassifier {
      * @return LLM 返回的 JSON 字符串，格式为 [{"id": 1, "importance": 2}, ...]
      */
     public String classify(List<String> messages) {
+        String system = promptTemplateService.getTemplate("pipeline.system");
+        String userTemplate = promptTemplateService.getTemplate("importance.user");
         String input = String.join("\n", messages);
         return chatClient.prompt()
-                .user(u -> u.text(PROMPT.formatted(input)))
+                .system(system)
+                .user(u -> u.text(userTemplate.replace("{messages}", input)))
                 .call()
                 .content();
     }
