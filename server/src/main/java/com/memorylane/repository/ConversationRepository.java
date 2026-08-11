@@ -13,4 +13,6 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     List<Conversation> findByContactIdOrderByLastMsgAtDesc(Long contactId);
 
     Optional<Conversation> findByContactIdAndPlatform(Long contactId, String platform);
+
+    void deleteByContactId(Long contactId);
 }

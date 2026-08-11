@@ -21,4 +21,8 @@ public interface MemoryRepository extends JpaRepository<Memory, Long> {
                                                                 @Param("category") String category);
 
     List<Memory> findByContactIdAndValidUntilIsNull(Long contactId);
+
+    List<Memory> findByContactId(Long contactId);
+
+    void deleteByContactId(Long contactId);
 }

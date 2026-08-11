@@ -40,5 +40,10 @@ export const useContactStore = defineStore('contacts', () => {
     await fetchAll()
   }
 
-  return { contacts, loading, fetchAll, search, create, remove }
+  async function merge(targetId: number, sourceIds: number[]) {
+    await api.post('/contacts/merge', { targetId, sourceIds })
+    await fetchAll()
+  }
+
+  return { contacts, loading, fetchAll, search, create, remove, merge }
 })

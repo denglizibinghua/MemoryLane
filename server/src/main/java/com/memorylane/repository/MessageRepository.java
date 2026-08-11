@@ -16,4 +16,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     boolean existsByContentHash(String contentHash);
 
     List<Message> findByConversationIdAndImportanceGreaterThanEqual(Long conversationId, Integer minImportance);
+
+    List<Message> findByIdInOrderByRawTimeAsc(List<Long> ids);
+
+    void deleteByConversationIdIn(List<Long> conversationIds);
 }

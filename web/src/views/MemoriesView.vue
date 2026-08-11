@@ -32,9 +32,9 @@
           />
         </el-select>
 
-        <div v-if="loading" style="text-align: center; padding: 40px">
+        <div v-if="loading || memoryStore.searching" style="text-align: center; padding: 40px">
           <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-          <p style="color: #9ca3af; margin-top: 12px">加载中...</p>
+          <p style="color: #9ca3af; margin-top: 12px">{{ memoryStore.searching ? '搜索中...' : '加载中...' }}</p>
         </div>
 
         <div v-else-if="errorMsg" style="text-align: center; padding: 40px">
@@ -51,11 +51,11 @@
             class="search-input"
           />
 
-          <el-empty v-if="!memoryStore.memories.length" description="暂无可展示的记忆" />
+          <el-empty v-if="!displayResults.length" :description="isSearchMode ? '未找到匹配的记忆' : '暂无可展示的记忆'" />
 
           <el-timeline v-else class="memory-timeline">
           <el-timeline-item
-            v-for="m in filteredMemories"
+            v-for="m in displayResults"
             :key="m.id"
             :timestamp="''"
             :color="categoryColor(m.category)"
@@ -63,17 +63,46 @@
           >
             <el-card shadow="hover" class="memory-card">
               <div class="memory-header">
-                <el-tag size="small" :type="categoryTagType(m.category)">
-                  {{ categoryLabel(m.category) }}
-                </el-tag>
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <el-tag size="small" :type="categoryTagType(m.category)">
+                    {{ categoryLabel(m.category) }}
+                  </el-tag>
+                  <el-tag v-if="isSearchResult(m) && !selectedContactId" size="small" effect="plain" type="info">
+                    {{ m.contactName }}
+                  </el-tag>
+                </div>
                 <span class="memory-confidence">
-                  置信度: {{ (m.confidence * 100).toFixed(0) }}%
+                  <template v-if="isSearchResult(m)">
+                    相关度: {{ (m.score * 100).toFixed(0) }}%
+                  </template>
+                  <template v-else>
+                    置信度: {{ (m.confidence * 100).toFixed(0) }}%
+                  </template>
                 </span>
               </div>
               <p class="memory-content">{{ m.content }}</p>
-              <div class="memory-source" v-if="m.sourceMsgIds?.length">
+              <div
+                class="memory-source"
+                :class="{ clickable: !isSearchResult(m) && m.sourceMsgIds?.length }"
+                @click.stop="!isSearchResult(m) && m.sourceMsgIds?.length && toggleSources(m.id)"
+              >
                 <el-icon><ChatDotRound /></el-icon>
-                来自 {{ m.sourceMsgIds.length }} 条消息
+                <template v-if="isSearchResult(m)">搜索匹配</template>
+                <template v-else-if="m.sourceMsgIds?.length">
+                  来自 {{ m.sourceMsgIds.length }} 条消息
+                  <el-icon v-if="expandedMemoryId === m.id" class="expand-icon"><ArrowUp /></el-icon>
+                  <el-icon v-else class="expand-icon"><ArrowDown /></el-icon>
+                </template>
+              </div>
+              <div v-if="expandedMemoryId === m.id && sourcesLoading" class="source-loading">
+                加载中...
+              </div>
+              <div v-else-if="expandedMemoryId === m.id && sourceMessages.length" class="source-messages">
+                <div v-for="msg in sourceMessages" :key="msg.id" class="source-msg">
+                  <span class="source-speaker">{{ msg.speaker }}</span>
+                  <span class="source-time">{{ formatSourceTime(msg.rawTime) }}</span>
+                  <p class="source-content">{{ msg.content }}</p>
+                </div>
               </div>
             </el-card>
           </el-timeline-item>
@@ -85,10 +114,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { ArrowLeft, Search, ChatDotRound, Loading } from '@element-plus/icons-vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { ArrowLeft, Search, ChatDotRound, Loading, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { useMemoryStore } from '@/stores/memories'
+import type { SearchResult } from '@/stores/memories'
 import { useContactStore } from '@/stores/contacts'
+import api from '@/api'
+
+interface MessageSource {
+  id: number
+  speaker: string
+  content: string
+  rawTime: string
+}
 
 const memoryStore = useMemoryStore()
 const contactStore = useContactStore()
@@ -97,10 +135,28 @@ const categoryFilter = ref('')
 const selectedContactId = ref<number | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
+const expandedMemoryId = ref<number | null>(null)
+const sourceMessages = ref<MessageSource[]>([])
+const sourcesLoading = ref(false)
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => {
   contactStore.fetchAll()
 })
+
+watch(searchQuery, (val) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (!val.trim()) {
+    memoryStore.searchResults = []
+    return
+  }
+  debounceTimer = setTimeout(() => {
+    memoryStore.searchMemories(val.trim(), selectedContactId.value ?? undefined)
+  }, 300)
+})
+
+const isSearchMode = computed(() => searchQuery.value.trim().length > 0)
 
 async function onContactChange(id: number | null) {
   if (!id) return
@@ -120,17 +176,47 @@ function retry() {
   if (selectedContactId.value) onContactChange(selectedContactId.value)
 }
 
+async function toggleSources(memoryId: number) {
+  if (expandedMemoryId.value === memoryId) {
+    expandedMemoryId.value = null
+    sourceMessages.value = []
+    return
+  }
+  expandedMemoryId.value = memoryId
+  sourcesLoading.value = true
+  sourceMessages.value = []
+  try {
+    const res = await api.get<MessageSource[]>(`/memories/${memoryId}/sources`)
+    sourceMessages.value = res.data
+  } catch {
+    sourceMessages.value = []
+  } finally {
+    sourcesLoading.value = false
+  }
+}
+
+function formatSourceTime(t: string) {
+  if (!t) return ''
+  const d = new Date(t)
+  return d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 const filteredMemories = computed(() => {
   let list = memoryStore.memories
   if (categoryFilter.value) {
     list = list.filter((m) => m.category === categoryFilter.value)
   }
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter((m) => m.content?.toLowerCase().includes(q))
-  }
   return list
 })
+
+const displayResults = computed<any[]>(() => {
+  if (isSearchMode.value) return memoryStore.searchResults
+  return filteredMemories.value
+})
+
+function isSearchResult(item: any): item is SearchResult {
+  return item && 'contactName' in item && 'score' in item
+}
 
 function categoryColor(cat: string) {
   const map: Record<string, string> = {
@@ -217,5 +303,63 @@ function categoryLabel(cat: string) {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.memory-source.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.memory-source.clickable:hover {
+  color: #409eff;
+}
+
+.expand-icon {
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.source-loading {
+  margin-top: 12px;
+  padding: 12px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.source-messages {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-msg {
+  position: relative;
+  background: #f0f7ff;
+  border-left: 3px solid #409eff;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+}
+
+.source-speaker {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-right: 10px;
+}
+
+.source-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.source-content {
+  margin: 6px 0 0 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
 }
 </style>

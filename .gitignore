@@ -34,3 +34,6 @@ docker-compose.override.yml
 
 # OpenPaw sessions
 .omo/
+
+# AI session handoff
+.handoff/

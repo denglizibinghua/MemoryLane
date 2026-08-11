@@ -13,6 +13,16 @@ export interface Memory {
   createdAt: string
 }
 
+export interface SearchResult {
+  id: number
+  type: string
+  content: string
+  score: number
+  category: string
+  contactId: number
+  contactName: string
+}
+
 export interface ImportResult {
   taskId: string
   stats: {
@@ -25,7 +35,9 @@ export interface ImportResult {
 
 export const useMemoryStore = defineStore('memories', () => {
   const memories = ref<Memory[]>([])
+  const searchResults = ref<SearchResult[]>([])
   const loading = ref(false)
+  const searching = ref(false)
   const lastImport = ref<ImportResult | null>(null)
 
   async function fetchByContact(contactId: number) {
@@ -48,6 +60,18 @@ export const useMemoryStore = defineStore('memories', () => {
     }
   }
 
+  async function searchMemories(q: string, contactId?: number) {
+    searching.value = true
+    try {
+      const res = await api.get<SearchResult[]>('/memories/search', {
+        params: { q, contactId },
+      })
+      searchResults.value = res.data
+    } finally {
+      searching.value = false
+    }
+  }
+
   async function importText(contactName: string, platform: string, content: string) {
     const res = await api.post<ImportResult>('/import/text', {
       contactName: contactName || undefined,
@@ -58,5 +82,5 @@ export const useMemoryStore = defineStore('memories', () => {
     return res.data
   }
 
-  return { memories, loading, lastImport, fetchByContact, fetchByCategory, importText }
+  return { memories, searchResults, loading, searching, lastImport, fetchByContact, fetchByCategory, searchMemories, importText }
 })

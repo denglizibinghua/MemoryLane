@@ -2,6 +2,8 @@ package com.memorylane.controller;
 
 import com.memorylane.entity.Contact;
 import com.memorylane.repository.ContactRepository;
+import com.memorylane.service.ContactService;
+import com.memorylane.service.ContactService.MergeResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +16,7 @@ import java.util.List;
 public class ContactController {
 
     private final ContactRepository contactRepository;
+    private final ContactService contactService;
 
     @GetMapping
     public ResponseEntity<List<Contact>> listAll() {
@@ -39,7 +42,14 @@ public class ContactController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        contactRepository.deleteById(id);
+        contactService.deleteWithCascade(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/merge")
+    public ResponseEntity<MergeResult> merge(@RequestBody MergeRequest request) {
+        return ResponseEntity.ok(contactService.merge(request.targetId(), request.sourceIds()));
+    }
+
+    public record MergeRequest(Long targetId, List<Long> sourceIds) {}
 }

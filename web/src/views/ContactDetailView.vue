@@ -6,7 +6,9 @@
           <el-icon><ArrowLeft /></el-icon> 返回联系人
         </el-button>
         <h1>{{ contact?.name || '加载中...' }}</h1>
-        <div></div>
+        <el-button v-if="contact" type="danger" plain size="small" @click="handleDelete">
+          <el-icon><Delete /></el-icon> 删除
+        </el-button>
       </el-header>
 
       <el-main>
@@ -45,15 +47,35 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { useMemoryStore } from '@/stores/memories'
+import { useContactStore } from '@/stores/contacts'
 import type { Contact } from '@/stores/contacts'
 
 const route = useRoute()
+const router = useRouter()
 const contact = ref<Contact | null>(null)
 const memoryStore = useMemoryStore()
+const contactStore = useContactStore()
+
+async function handleDelete() {
+  if (!contact.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${contact.value.name}」及其全部对话和记忆？此操作不可撤销。`,
+      '删除联系人',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    await contactStore.remove(contact.value.id)
+    ElMessage.success('已删除')
+    router.push('/contacts')
+  } catch {
+    // cancelled
+  }
+}
 
 function platformLabel(p: string) {
   const map: Record<string, string> = { wechat: '微信', qq: 'QQ', douyin: '抖音', sms: '短信', other: '其他' }
