@@ -42,6 +42,10 @@
 
 ## 🚀 快速开始（Docker，推荐）
 
+> 📖 **从零开始？** 看这篇：[完整安装指南 →](docs/SETUP.md)
+>
+> 包含：Docker 安装教程 + 国内镜像加速 + DeepSeek/通义 API Key 申请 + 图文全流程。
+
 不用装 JDK、不用装 Maven、不用装 Postgres。只要装个 Docker Desktop。
 
 ```bash
