@@ -3,7 +3,6 @@ package com.memorylane.service;
 import com.memorylane.dto.CreateReminderRequest;
 import com.memorylane.dto.ReminderDTO;
 import com.memorylane.entity.Memory;
-import com.memorylane.entity.MemoryCategory;
 import com.memorylane.entity.Reminder;
 import com.memorylane.repository.ContactRepository;
 import com.memorylane.repository.MemoryRepository;
@@ -52,7 +51,6 @@ public class ReminderService {
         List<PromiseCandidate> candidates = new ArrayList<>();
         Instant now = Instant.now();
         for (Memory mem : promises) {
-            if (mem.getCategory() != MemoryCategory.promise) continue;
             if (reminderRepository.findByMemoryId(mem.getId()).isPresent()) {
                 mem.setReminderScannedAt(now);
                 memoryRepository.save(mem);
