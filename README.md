@@ -26,6 +26,8 @@
 
 > ⚠️ 本项目不需要破解任何 app 的加密数据库。所有数据由用户主动粘贴，隐私可控。
 
+![MemoryLane 首页](docs/screenshots/homepage.jpeg)
+
 ---
 
 ## 🏗️ 技术栈
