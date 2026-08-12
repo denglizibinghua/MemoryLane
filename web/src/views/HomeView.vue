@@ -1,5 +1,13 @@
 <template>
   <div class="home">
+    <!-- Floating success toast -->
+    <transition name="toast-fade">
+      <div v-if="showImportToast" class="import-toast">
+        <el-icon color="#10b981" :size="18"><component :is="SuccessFilled" /></el-icon>
+        <span>导入完成：{{ importResult?.stats.newMessages }} 条新消息，{{ importResult?.stats.duplicates }} 条重复</span>
+      </div>
+    </transition>
+
     <el-container class="hero-container">
       <el-header class="hero-header">
         <div class="logo">
@@ -72,6 +80,11 @@
                 <span style="color: #6b7280; font-size: 13px; white-space: nowrap">我是谁：</span>
                 <el-select v-model="selfName" placeholder="选择你自己" style="width: 160px">
                   <el-option
+                    v-if="pasteHasSelf"
+                    label="我（自己）"
+                    value="我"
+                  />
+                  <el-option
                     v-for="s in previewResult.speakers"
                     :key="s"
                     :label="s"
@@ -127,49 +140,20 @@
               />
             </div>
 
-            <!-- Step 1: Show thumbnail → 开始识别 -->
-            <div v-else-if="!ocrPreviewResult">
+            <!-- Show thumbnail → 开始识别 -->
+            <div v-else>
               <div class="screenshot-preview">
                 <img :src="screenshotPreview" alt="截图预览" />
               </div>
-              <div class="card-footer" style="justify-content: flex-end">
+              <div v-if="screenshotLoading" class="card-footer" style="justify-content: center; color: #6366f1">
+                <el-icon class="is-loading" :size="18"><Loading /></el-icon>
+                <span style="margin-left: 8px">识别中…</span>
+              </div>
+              <div v-else class="card-footer" style="justify-content: flex-end">
                 <el-button @click="resetScreenshot">重新选择</el-button>
-                <el-button type="primary" @click="handleScreenshotPreview" :loading="screenshotLoading">
+                <el-button type="primary" @click="handleScreenshotPreview">
                   开始识别
                 </el-button>
-              </div>
-            </div>
-
-            <!-- Step 2: Show OCR text → edit → 确认导入 -->
-            <div v-else>
-              <el-input
-                v-model="ocrEditText"
-                type="textarea"
-                :rows="8"
-                placeholder="OCR 识别结果，可手动修改..."
-              />
-              <div class="card-footer">
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-                  <el-select v-model="screenshotPlatform" placeholder="自动识别" style="width: 120px">
-                    <el-option label="自动识别" value="auto" />
-                    <el-option label="微信" value="wechat" />
-                    <el-option label="QQ" value="qq" />
-                    <el-option label="抖音" value="douyin" />
-                    <el-option label="通用文本" value="generic" />
-                  </el-select>
-                  <el-input
-                    v-model="screenshotSelfName"
-                    placeholder="我是谁 (选填)"
-                    style="width: 140px"
-                    clearable
-                  />
-                </div>
-                <div style="display: flex; gap: 8px">
-                  <el-button @click="resetScreenshot">重新选择</el-button>
-                  <el-button type="primary" @click="handleScreenshotConfirm" :loading="screenshotLoading">
-                    确认导入
-                  </el-button>
-                </div>
               </div>
             </div>
           </el-card>
@@ -187,11 +171,6 @@
 
         <!-- Import results -->
         <div v-if="importResult && importResult.contacts.length > 0" class="import-results">
-          <el-alert type="success" show-icon closable style="max-width: 640px; margin: 0 auto 16px">
-            <template #title>
-              导入完成：{{ importResult.stats.newMessages }} 条新消息，{{ importResult.stats.duplicates }} 条重复
-            </template>
-          </el-alert>
           <div class="contact-results">
             <el-card
               v-for="cr in importResult.contacts"
@@ -202,11 +181,11 @@
             >
               <div class="cr-name">{{ cr.contactName }}</div>
               <div class="cr-count">{{ cr.messageCount }} 条消息</div>
-              <div v-if="extractingContacts[cr.contactId]" class="cr-extracting">
-                <el-icon class="is-loading"><Loading /></el-icon> 分析中...
+              <div v-if="extractingContacts[cr.contactId] !== undefined" class="cr-extracting">
+                <el-icon class="is-loading"><Loading /></el-icon> 分析中…
               </div>
               <div v-else-if="contactMemories[cr.contactId]" class="cr-memories">
-                {{ contactMemories[cr.contactId] }} 条记忆
+                ✅ {{ contactMemories[cr.contactId] }} 条记忆
               </div>
             </el-card>
           </div>
@@ -235,11 +214,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Timer, List, Collection, EditPen, Camera, Loading, ChatDotRound, DataAnalysis, MagicStick, Setting, Bell, TrendCharts, User } from '@element-plus/icons-vue'
+import { Timer, List, Collection, EditPen, Camera, Loading, ChatDotRound, DataAnalysis, MagicStick, Setting, Bell, TrendCharts, User, SuccessFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useMemoryStore } from '@/stores/memories'
 import { getAiSettings, type AiSettingsResponse } from '@/api/settings'
-import type { ImportResult, PreviewResult, ScreenshotPreview } from '@/stores/memories'
+import type { ImportResult, PreviewResult } from '@/stores/memories'
 import api from '@/api'
 
 const memoryStore = useMemoryStore()
@@ -247,11 +226,14 @@ const memoryStore = useMemoryStore()
 const pasteText = ref('')
 const platform = ref('auto')
 const selfName = ref('')
+const pasteHasSelf = ref(false)
 const previewResult = ref<PreviewResult | null>(null)
 const previewLoading = ref(false)
 const importing = ref(false)
 const importResult = ref<ImportResult | null>(null)
 const importError = ref('')
+const showImportToast = ref(false)
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 // Memory extraction polling state
 const extractingContacts = ref<Record<number, string>>({})  // contactId → name
@@ -262,11 +244,7 @@ let memoryPollTimer: ReturnType<typeof setInterval> | null = null
 const screenshotFile = ref<File | null>(null)
 const screenshotPreview = ref('')
 const screenshotLoading = ref(false)
-const screenshotPlatform = ref('auto')
-const screenshotSelfName = ref('')
 const screenshotFileInput = ref<HTMLInputElement | null>(null)
-const ocrPreviewResult = ref<ScreenshotPreview | null>(null)
-const ocrEditText = ref('')
 
 // Current AI model info (for vision support warning)
 const currentChatProvider = ref('')
@@ -330,8 +308,23 @@ const features = [
 function resetImport() {
   previewResult.value = null
   selfName.value = ''
+  pasteHasSelf.value = false
   importResult.value = null
   importError.value = ''
+  showImportToast.value = false
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null }
+  if (memoryPollTimer) {
+    clearInterval(memoryPollTimer)
+    memoryPollTimer = null
+  }
+}
+
+function showToast() {
+  showImportToast.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    showImportToast.value = false
+  }, 5000)
 }
 
 async function handlePreview() {
@@ -344,9 +337,10 @@ async function handlePreview() {
   importError.value = ''
   try {
     previewResult.value = await memoryStore.previewImport(pasteText.value, platform.value)
-    // Auto-select if only one non-self speaker
-    if (previewResult.value.speakers.length === 1) {
-      selfName.value = previewResult.value.speakers[0]
+    // If the raw text uses "我" to refer to the user, add it as a dropdown option
+    pasteHasSelf.value = /^我[：:]\s*\S/m.test(pasteText.value)
+    if (pasteHasSelf.value) {
+      selfName.value = '我'
     } else {
       selfName.value = ''
     }
@@ -369,6 +363,7 @@ async function handleImport() {
     importResult.value = await memoryStore.importText(selfName.value, platform.value, pasteText.value)
     pasteText.value = ''
     previewResult.value = null
+    showToast()
     startMemoryPolling(importResult.value)
   } catch (e: any) {
     importError.value = e?.response?.data?.message || e?.message || '导入失败，请重试'
@@ -397,10 +392,7 @@ function resetScreenshot() {
   }
   screenshotFile.value = null
   screenshotPreview.value = ''
-  screenshotSelfName.value = ''
-  screenshotPlatform.value = 'auto'
-  ocrPreviewResult.value = null
-  ocrEditText.value = ''
+  screenshotLoading.value = false
   importResult.value = null
   importError.value = ''
   if (screenshotFileInput.value) {
@@ -415,36 +407,15 @@ async function handleScreenshotPreview() {
   }
   screenshotLoading.value = true
   importError.value = ''
-  ocrPreviewResult.value = null
   try {
-    ocrPreviewResult.value = await memoryStore.previewScreenshot(screenshotFile.value)
-    ocrEditText.value = ocrPreviewResult.value.ocrText
+    const result = await memoryStore.previewScreenshot(screenshotFile.value)
+    // Feed OCR text into the text import pipeline — reuse preview → select self → import flow
+    pasteText.value = result.ocrText
+    platform.value = result.platform || 'auto'
+    resetScreenshot()
+    await handlePreview()
   } catch (e: any) {
     importError.value = e?.response?.data?.message || e?.message || '截图识别失败，请重试'
-  } finally {
-    screenshotLoading.value = false
-  }
-}
-
-async function handleScreenshotConfirm() {
-  if (!ocrEditText.value.trim()) {
-    ElMessage.warning('OCR 识别内容为空')
-    return
-  }
-  screenshotLoading.value = true
-  importResult.value = null
-  importError.value = ''
-  try {
-    importResult.value = await memoryStore.importText(
-      screenshotSelfName.value,
-      screenshotPlatform.value || ocrPreviewResult.value?.platform || 'auto',
-      ocrEditText.value,
-    )
-    startMemoryPolling(importResult.value)
-    resetScreenshot()
-  } catch (e: any) {
-    importError.value = e?.response?.data?.message || e?.message || '导入失败，请重试'
-  } finally {
     screenshotLoading.value = false
   }
 }
@@ -508,6 +479,37 @@ function providerLabel(key: string): string {
 </script>
 
 <style scoped>
+/* ── Import toast (top banner) ── */
+.import-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-100%);
+}
+
 .home {
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 50%, #fae8ff 100%);
@@ -686,8 +688,11 @@ function providerLabel(key: string): string {
 
 .import-results {
   max-width: 640px;
-  margin: 0 auto 60px;
+  margin: 40px auto 60px;
 }
+
+
+
 
 .contact-results {
   display: flex;

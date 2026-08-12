@@ -73,12 +73,16 @@ public class TextPasteAdapter implements InputAdapter {
         );
         log.info("[import:{}] Parsed {} messages", taskId, parsed.size());
 
+        // Resolve the actual platform from parsed messages (parser detects it),
+        // NOT the raw request value (which may be "auto").
+        String resolvedPlatform = resolvePlatform(parsed, request.platform());
+
         String selfName = effectiveSelfName(request);
 
         if (selfName != null && !selfName.isBlank()) {
-            return processMultiContact(taskId, parsed, selfName, request.platform());
+            return processMultiContact(taskId, parsed, selfName, resolvedPlatform);
         }
-        return processLegacy(taskId, parsed, request);
+        return processLegacy(taskId, parsed, request.contactName(), resolvedPlatform);
     }
 
     // ── Multi-contact mode ───────────────────────────────────────────
@@ -90,7 +94,7 @@ public class TextPasteAdapter implements InputAdapter {
         Set<String> otherSpeakers = new LinkedHashSet<>();
         for (RawMessage rm : parsed) {
             if (rm.speaker() == null || rm.speaker().isBlank()) continue;
-            if (rm.speaker().equals(selfName) || rm.speaker().equals("我")) {
+            if (SELF_SPEAKER.equals(rm.speaker()) || rm.speaker().equals(selfName)) {
                 tagged.add(new TaggedMessage(SELF_SPEAKER, rm.content(), rm.rawTime(), null));
             } else {
                 String sp = rm.speaker().trim();
@@ -101,7 +105,7 @@ public class TextPasteAdapter implements InputAdapter {
 
         if (otherSpeakers.isEmpty()) {
             log.warn("[import:{}] No non-self speakers found, falling back to legacy", taskId);
-            return processLegacy(taskId, parsed, new ImportTextRequest(null, selfName, platform, ""));
+            return processLegacy(taskId, parsed, selfName, platform);
         }
 
         int totalNew = 0;
@@ -109,6 +113,12 @@ public class TextPasteAdapter implements InputAdapter {
         List<ImportTextResponse.ContactResult> contactResults = new ArrayList<>();
 
         for (String otherName : otherSpeakers) {
+            // Defense: never persist the reserved "self" speaker as a contact
+            if (SELF_SPEAKER.equals(otherName)) {
+                log.warn("[import:{}] Skipping reserved speaker 'self' as contact", taskId);
+                continue;
+            }
+
             // Find or create contact
             Contact contact = contactRepository.findByNameAndPlatform(otherName, platform)
                     .orElseGet(() -> contactRepository.save(
@@ -140,7 +150,7 @@ public class TextPasteAdapter implements InputAdapter {
 
             for (TaggedMessage tm : contactMsgs) {
                 String hash = sha256(tm.speaker + "|" + tm.content);
-                if (messageRepository.existsByContentHash(hash)) {
+                if (messageRepository.existsByConversationIdAndContentHash(conv.getId(), hash)) {
                     dupCount++;
                     continue;
                 }
@@ -191,20 +201,20 @@ public class TextPasteAdapter implements InputAdapter {
     // ── Legacy single-contact mode ───────────────────────────────────
 
     private ImportTextResponse processLegacy(String taskId, List<RawMessage> parsed,
-                                              ImportTextRequest request) {
-        String contactName = (request.contactName() != null && !request.contactName().isBlank())
-                ? request.contactName()
+                                              String contactName, String resolvedPlatform) {
+        String effectiveContactName = (contactName != null && !contactName.isBlank())
+                ? contactName
                 : extractPrimarySpeaker(parsed);
 
         Contact contact = contactRepository
-                .findByNameAndPlatform(contactName, request.platform())
+                .findByNameAndPlatform(effectiveContactName, resolvedPlatform)
                 .orElseGet(() -> contactRepository.save(
-                        Contact.builder().name(contactName).platform(request.platform()).build()));
+                        Contact.builder().name(effectiveContactName).platform(resolvedPlatform).build()));
 
         Conversation conv = conversationRepository
-                .findByContactIdAndPlatform(contact.getId(), request.platform())
+                .findByContactIdAndPlatform(contact.getId(), resolvedPlatform)
                 .orElseGet(() -> conversationRepository.save(
-                        Conversation.builder().contact(contact).platform(request.platform()).build()));
+                        Conversation.builder().contact(contact).platform(resolvedPlatform).build()));
 
         int newCount = 0;
         int dupCount = 0;
@@ -214,7 +224,7 @@ public class TextPasteAdapter implements InputAdapter {
 
         for (RawMessage rm : parsed) {
             String hash = sha256(rm.speaker() + "|" + rm.content());
-            if (messageRepository.existsByContentHash(hash)) {
+            if (messageRepository.existsByConversationIdAndContentHash(conv.getId(), hash)) {
                 dupCount++;
                 continue;
             }
@@ -258,6 +268,24 @@ public class TextPasteAdapter implements InputAdapter {
     /** Internal representation for the multi-contact distribution loop. */
     private record TaggedMessage(String speaker, String content, Instant rawTime, String contactName) {}
 
+    /**
+     * Extract the resolved platform from parsed messages (which went through
+     * PlatformDetector). Falls back to a cleaned-up request value if no parsed
+     * messages carry a platform.
+     */
+    private static String resolvePlatform(List<RawMessage> parsed, String requestPlatform) {
+        for (RawMessage rm : parsed) {
+            if (rm.platform() != null && !rm.platform().isBlank()) {
+                return rm.platform();
+            }
+        }
+        // Fallback: clean up the request value (never return raw "auto")
+        if (requestPlatform == null || requestPlatform.isBlank() || "auto".equalsIgnoreCase(requestPlatform.trim())) {
+            return "generic";
+        }
+        return requestPlatform.trim().toLowerCase();
+    }
+
     private String effectiveSelfName(ImportTextRequest request) {
         if (request.selfName() != null && !request.selfName().isBlank()) return request.selfName().trim();
         return null;
@@ -266,7 +294,7 @@ public class TextPasteAdapter implements InputAdapter {
     private String extractPrimarySpeaker(List<RawMessage> messages) {
         return messages.stream()
                 .map(RawMessage::speaker)
-                .filter(s -> !"我".equals(s) && !"self".equals(s))
+                .filter(s -> s != null && !SELF_SPEAKER.equals(s))
                 .findFirst()
                 .orElse("Unknown");
     }

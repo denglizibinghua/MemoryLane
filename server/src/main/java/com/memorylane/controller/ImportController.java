@@ -241,7 +241,7 @@ public class ImportController {
 
         for (SaveConversationRequest.ConversationMessage cm : request.messages()) {
             String hash = sha256(cm.speaker() + "|" + cm.content());
-            if (messageRepository.existsByContentHash(hash)) {
+            if (messageRepository.existsByConversationIdAndContentHash(conv.getId(), hash)) {
                 dupCount++;
                 continue;
             }

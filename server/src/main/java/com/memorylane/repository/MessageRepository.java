@@ -15,6 +15,9 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     boolean existsByContentHash(String contentHash);
 
+    /** Per-conversation dedup (V7+): checks hash within a single conversation only. */
+    boolean existsByConversationIdAndContentHash(Long conversationId, String contentHash);
+
     List<Message> findByConversationIdAndImportanceGreaterThanEqual(Long conversationId, Integer minImportance);
 
     List<Message> findByIdInOrderByRawTimeAsc(List<Long> ids);
