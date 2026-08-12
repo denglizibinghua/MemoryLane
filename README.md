@@ -40,7 +40,34 @@
 
 ---
 
-## 🚀 快速开始
+## 🚀 快速开始（Docker，推荐）
+
+不用装 JDK、不用装 Maven、不用装 Postgres。只要装个 Docker Desktop。
+
+```bash
+# 1. 下载项目
+git clone https://github.com/denglizibinghua/MemoryLane.git
+cd MemoryLane
+
+# 2. 配置 AI API Key（支持 OpenAI / DeepSeek / 通义 / Ollama / 智谱 / Moonshot）
+cp .env.example .env
+# 编辑 .env → 填入你的 API Key，选填模型名
+
+# 3. 一键启动（首次构建大约 3-5 分钟，之后秒起）
+docker-compose up -d
+
+# 4. 打开浏览器
+# http://localhost:3000  ← 前端
+# http://localhost:8080  ← 后端 API（如需直连）
+```
+
+> 💡 启动后在「设置」页面可以随时切换 AI provider，API Key 热更新，不用重启。
+>
+> 💡 截图 OCR 降级（Tesseract）的语言包已在构建时自动下载，开箱即用。
+
+---
+
+### 🛠️ 手动开发（需要本地 Java + Node 环境）
 
 ```bash
 # 数据库
@@ -48,8 +75,8 @@ docker run -d --name memorylane-db -p 5432:5432 \
   -e POSTGRES_DB=memorylane -e POSTGRES_USER=memorylane -e POSTGRES_PASSWORD=memorylane123 \
   pgvector/pgvector:pg16
 
-# 后端（IDEA → File → Open → server/pom.xml → Run MemoryLaneApplication）
-# 端口：8080，JDK 17
+# 后端（JDK 17 + IDEA → Open server/pom.xml → Run MemoryLaneApplication）
+# 端口：8080
 
 # 前端
 cd web
@@ -79,6 +106,7 @@ npm run dev
 - [x] 约定提醒：自然语言时间解析 + 定时通知
 - [x] pgvector 扩展已安装，语义搜索代码就绪
 - [x] 稳定性修复：platform 真实检测、self 防误入联系人、按会话去重、截图导入统一流
+- [x] Docker 一键部署：docker-compose up -d，零环境依赖，含 Tesseract OCR
 
 ---
 
