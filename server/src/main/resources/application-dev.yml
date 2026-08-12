@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/memorylane
+    url: jdbc:postgresql://localhost:5432/memorylane?stringtype=unspecified
     username: memorylane
     password: ${DB_PASSWORD:memorylane123}
     driver-class-name: org.postgresql.Driver

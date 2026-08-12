@@ -25,7 +25,7 @@ services:
     container_name: memorylane-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/memorylane
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/memorylane?stringtype=unspecified
       SPRING_DATASOURCE_USERNAME: memorylane
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-memorylane123}
       LLM_API_KEY: ${LLM_API_KEY}
