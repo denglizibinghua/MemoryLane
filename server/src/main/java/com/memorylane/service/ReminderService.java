@@ -180,6 +180,15 @@ public class ReminderService {
         });
     }
 
+    @Transactional
+    public void resetScannedAt(long memoryId) {
+        memoryRepository.findById(memoryId).ifPresent(mem -> {
+            mem.setReminderScannedAt(null);
+            memoryRepository.save(mem);
+            log.debug("resetScannedAt — memory={} ready for retry", memoryId);
+        });
+    }
+
     public long countByStatus(String status) {
         return reminderRepository.countByStatus(status);
     }

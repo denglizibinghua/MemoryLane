@@ -49,11 +49,18 @@ public class ReminderScheduler {
             // ── Phase 2: LLM parsing (outside any transaction) ──
             for (PromiseCandidate c : candidates) {
                 ParsedTime parsed = timeParser.parse(c.memoryId(), c.content(), c.contactName());
-                if (!parsed.hasTime() || parsed.eventTime() == null) continue;
+                if (!parsed.hasTime() || parsed.eventTime() == null) {
+                    // LLM failed to extract time — reset scannedAt so it retries next sweep
+                    reminderService.resetScannedAt(c.memoryId());
+                    continue;
+                }
 
                 // ── Phase 3: persist (individual short-lived tx) ──
                 if (reminderService.createReminder(c.memoryId(), parsed) != null) {
                     created++;
+                } else {
+                    // createReminder failed (e.g. past time, duplicate) — allow retry
+                    reminderService.resetScannedAt(c.memoryId());
                 }
             }
             log.info("Sweep scan: candidates={}, created={}", candidates.size(), created);
