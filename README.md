@@ -80,12 +80,6 @@ npm run dev
 - [x] pgvector 扩展已安装，语义搜索代码就绪
 - [x] 稳定性修复：platform 真实检测、self 防误入联系人、按会话去重、截图导入统一流
 
-### 🔜 下一步
-
-- [ ] 启用 embedding API，上线语义搜索
-- [ ] 记忆导出（Markdown/JSON）
-- [ ] 多用户支持
-
 ---
 
 ## 📂 项目结构
