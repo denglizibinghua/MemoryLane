@@ -28,6 +28,10 @@
 
 ![MemoryLane 首页](docs/screenshots/homepage.jpeg)
 
+## 🎬 演示视频
+
+> 📺 **B站演示**：https://www.bilibili.com/video/BV15dg56tEiF — 3 分钟带你看完“粘贴聊天 → AI 识人 → 提炼记忆 → 军师建议”全流程
+
 ---
 
 ## 🏗️ 技术栈
