@@ -1,160 +1,276 @@
 <template>
-  <div class="memories-page">
-    <el-container class="page-container">
-      <el-header class="page-header">
-        <el-button text @click="$router.push('/')">
-          <el-icon><ArrowLeft /></el-icon> 返回
-        </el-button>
-        <h1>记忆库</h1>
-        <el-select v-model="categoryFilter" placeholder="全部分类" clearable style="width: 160px">
-          <el-option label="约定/承诺" value="promise" />
-          <el-option label="个人信息" value="personal_info" />
-          <el-option label="偏好" value="preference" />
-          <el-option label="事件" value="event" />
-          <el-option label="人设特征" value="persona" />
-          <el-option label="关系动态" value="relationship" />
-        </el-select>
-      </el-header>
+  <div class="memories">
+    <div class="page memories-inner">
+      <PageHeader
+        title="记忆库"
+        description="每一句被记住的细节，都能翻回它出现的那段对话。搜索会查所有联系人。"
+      >
+        <template #actions>
+          <el-button @click="$router.push('/')">
+            <el-icon><EditPen /></el-icon>
+            导入聊天
+          </el-button>
+        </template>
+      </PageHeader>
 
-      <el-main>
-        <el-select
-          v-model="selectedContactId"
-          placeholder="选择联系人"
-          clearable
-          style="width: 100%; margin-bottom: 16px"
-          @change="onContactChange"
+      <div v-if="!contactStore.contacts.length && !contactStore.loading" class="no-contacts">
+        <EmptyState
+          title="记忆库还是空的"
+          description="先导入一段聊天。忆路会把约定、偏好、个人信息这些细节提炼出来，按联系人放好。"
         >
-          <el-option
-            v-for="c in contactStore.contacts"
-            :key="c.id"
-            :label="c.name"
-            :value="c.id"
-          />
-        </el-select>
+          <el-button type="primary" @click="$router.push('/')">去导入第一段聊天</el-button>
+        </EmptyState>
+      </div>
 
-        <div v-if="loading || memoryStore.searching" style="text-align: center; padding: 40px">
-          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-          <p style="color: #9ca3af; margin-top: 12px">{{ memoryStore.searching ? '搜索中...' : '加载中...' }}</p>
-        </div>
-
-        <div v-else-if="errorMsg" style="text-align: center; padding: 40px">
-          <p style="color: #ef4444">{{ errorMsg }}</p>
-          <el-button size="small" @click="retry" style="margin-top: 12px">重试</el-button>
-        </div>
-
-        <template v-else>
-          <div class="search-row">
-            <el-input
-              v-model="searchQuery"
-              placeholder="搜索记忆..."
-              :prefix-icon="Search"
-              clearable
-              class="search-input"
-            />
-            <el-tag
-              size="small"
-              :type="embeddingActive ? '' : 'info'"
-              :effect="embeddingActive ? 'light' : 'plain'"
-              class="search-mode-tag"
-            >
-              {{ embeddingActive ? '混合搜索' : '关键词搜索' }}
-            </el-tag>
+      <div v-else class="memory-layout">
+        <!-- Contact rail -->
+        <aside class="contact-rail" aria-label="按联系人浏览">
+          <div class="rail-head">
+            <span>按联系人</span>
+            <span class="rail-count tabular">{{ contactStore.contacts.length }}</span>
           </div>
 
-          <el-empty v-if="!displayResults.length" :description="isSearchMode ? '未找到匹配的记忆' : '暂无可展示的记忆'" />
+          <div class="rail-search">
+            <el-input
+              v-model="contactQuery"
+              size="small"
+              placeholder="筛选联系人"
+              :prefix-icon="Search"
+              clearable
+            />
+          </div>
 
-          <el-timeline v-else class="memory-timeline">
-          <el-timeline-item
-            v-for="m in displayResults"
-            :key="m.id"
-            :timestamp="''"
-            :color="categoryColor(m.category)"
-            placement="top"
-          >
-            <el-card shadow="hover" class="memory-card">
-              <div class="memory-header">
-                <div style="display: flex; align-items: center; gap: 8px">
-                  <el-tag size="small" :type="categoryTagType(m.category)">
-                    {{ categoryLabel(m.category) }}
-                  </el-tag>
-                  <el-tag v-if="isSearchResult(m) && !selectedContactId" size="small" effect="plain" type="info">
-                    {{ m.contactName }}
-                  </el-tag>
-                </div>
-                <span class="memory-confidence">
-                  <template v-if="isSearchResult(m)">
-                    相关度: {{ (m.score * 100).toFixed(0) }}%
-                  </template>
-                  <template v-else>
-                    置信度: {{ (m.confidence * 100).toFixed(0) }}%
-                  </template>
-                </span>
-              </div>
-              <p class="memory-content">{{ m.content }}</p>
-              <div
-                class="memory-source"
-                :class="{ clickable: !isSearchResult(m) && m.sourceMsgIds?.length }"
-                @click.stop="!isSearchResult(m) && m.sourceMsgIds?.length && toggleSources(m.id)"
+          <ul v-if="filteredContacts.length" class="rail-list">
+            <li v-for="c in filteredContacts" :key="c.id">
+              <button
+                type="button"
+                class="rail-item"
+                :class="{ 'is-active': selectedId === c.id && !isSearchMode }"
+                @click="selectContact(c.id)"
               >
-                <el-icon><ChatDotRound /></el-icon>
-                <template v-if="isSearchResult(m)">搜索匹配</template>
-                <template v-else-if="m.sourceMsgIds?.length">
-                  来自 {{ m.sourceMsgIds.length }} 条消息
-                  <el-icon v-if="expandedMemoryId === m.id" class="expand-icon"><ArrowUp /></el-icon>
-                  <el-icon v-else class="expand-icon"><ArrowDown /></el-icon>
-                </template>
-              </div>
-              <div v-if="expandedMemoryId === m.id && sourcesLoading" class="source-loading">
-                加载中...
-              </div>
-              <div v-else-if="expandedMemoryId === m.id && sourceMessages.length" class="source-messages">
-                <div v-for="msg in sourceMessages" :key="msg.id" class="source-msg">
-                  <span class="source-speaker">{{ msg.speaker }}</span>
-                  <span class="source-time">{{ formatSourceTime(msg.rawTime) }}</span>
-                  <p class="source-content">{{ msg.content }}</p>
-                </div>
-              </div>
-            </el-card>
-          </el-timeline-item>
-        </el-timeline>
-        </template>
-      </el-main>
-    </el-container>
+                <MonogramAvatar :name="c.name" :size="30" />
+                <span class="rail-item-copy">
+                  <span class="rail-item-name">{{ c.name }}</span>
+                  <span class="rail-item-meta">{{ platformLabel(c.platform) }}</span>
+                </span>
+                <span v-if="selectedId === c.id" class="rail-current"></span>
+              </button>
+            </li>
+          </ul>
+          <p v-else class="rail-empty">没有匹配的联系人</p>
+
+          <RouterLink to="/contacts" class="rail-manage">
+            管理联系人
+            <el-icon :size="11"><ArrowRight /></el-icon>
+          </RouterLink>
+        </aside>
+
+        <!-- Memory main -->
+        <section class="memory-main">
+          <div class="search-block">
+            <el-input
+              v-model="searchQuery"
+              size="large"
+              class="memory-search"
+              placeholder="搜索所有联系人的记忆，比如「发烧」「爬山」「香菜」"
+              :prefix-icon="Search"
+              clearable
+            />
+            <span
+              class="search-mode"
+              :class="{ 'is-plain': !embeddingActive }"
+              :title="embeddingActive ? '全文与语义混合检索已开启' : '当前为全文检索，语义检索可在设置中开启'"
+            >
+              {{ embeddingActive ? '混合检索' : '全文检索' }}
+            </span>
+          </div>
+
+          <div class="category-row" role="group" aria-label="按记忆类别筛选">
+            <button
+              type="button"
+              class="category-chip"
+              :class="{ 'is-active': !categoryFilter }"
+              @click="categoryFilter = ''"
+            >
+              全部
+              <span class="chip-count tabular">{{ baseItems.length }}</span>
+            </button>
+            <button
+              v-for="cat in MEMORY_CATEGORIES"
+              :key="cat.key"
+              type="button"
+              class="category-chip"
+              :class="{ 'is-active': categoryFilter === cat.key }"
+              @click="categoryFilter = cat.key"
+            >
+              <span class="chip-dot" :style="{ background: cat.color }"></span>
+              {{ cat.label }}
+              <span class="chip-count tabular">{{ categoryCounts[cat.key] || 0 }}</span>
+            </button>
+          </div>
+
+          <div class="memory-headline">
+            <div>
+              <h2 v-if="isSearchMode">
+                找到 {{ displayResults.length }} 条记忆
+              </h2>
+              <h2 v-else-if="selectedContact">
+                {{ selectedContact.name }}
+              </h2>
+              <h2 v-else>记忆</h2>
+              <p v-if="isSearchMode" class="headline-sub">
+                搜索范围：全部联系人 · 关键词「{{ searchQuery.trim() }}」
+              </p>
+              <p v-else-if="selectedContact" class="headline-sub">
+                {{ platformLabel(selectedContact.platform) }} · {{ displayResults.length }} 条有效记忆
+              </p>
+            </div>
+            <span v-if="!isSearchMode && selectedContact" class="headline-tag">
+              按置信度
+            </span>
+          </div>
+
+          <!-- Loading -->
+          <div v-if="loading || memoryStore.searching" class="memory-skeletons" aria-label="加载中">
+            <div v-for="n in 3" :key="n" class="memory-skeleton">
+              <el-skeleton :rows="3" animated />
+            </div>
+          </div>
+
+          <!-- Error -->
+          <div v-else-if="errorMsg" class="memory-feedback is-error">
+            <p>{{ errorMsg }}</p>
+            <el-button size="small" @click="retry">重试</el-button>
+          </div>
+
+          <!-- Empty: search -->
+          <EmptyState
+            v-else-if="isSearchMode && !displayResults.length"
+            title="没有找到这条记忆"
+            description="换一个更短的词试试。忆路会按单个汉字拆分检索，搜「发」也能命中「发烧」。"
+          >
+            <div class="suggestion-terms">
+              <button
+                v-for="term in suggestionTerms"
+                :key="term"
+                type="button"
+                class="term-chip"
+                @click="searchQuery = term"
+              >
+                {{ term }}
+              </button>
+            </div>
+          </EmptyState>
+
+          <!-- Empty: selected contact -->
+          <EmptyState
+            v-else-if="!displayResults.length && selectedContact"
+            :title="categoryFilter ? '这个类别下还没有记忆' : '这段关系还没有被提炼'"
+            :description="
+              categoryFilter
+                ? '换一个类别看看，或者去掉筛选。'
+                : '导入更多聊天后，AI 会自动把约定、偏好和事件整理到这里。'
+            "
+          >
+            <el-button v-if="categoryFilter" @click="categoryFilter = ''">查看全部类别</el-button>
+            <el-button v-else type="primary" @click="$router.push('/')">再导入一段聊天</el-button>
+          </EmptyState>
+
+          <!-- Memory lane -->
+          <ol v-else class="memory-lane">
+            <li v-for="(item, index) in displayResults" :key="item.id" class="lane-item">
+              <span class="lane-node" :style="{ background: categoryMeta(item.category).color }"></span>
+              <MemoryItem
+                :item="item"
+                :rank="index + 1"
+                :show-contact="isSearchMode"
+                :contact-name="!isSearchResult(item) ? selectedContact?.name : undefined"
+              />
+            </li>
+          </ol>
+
+          <p v-if="displayResults.length > 0" class="lane-end">
+            — 已经到底了 —
+          </p>
+        </section>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { ArrowLeft, Search, ChatDotRound, Loading, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ArrowRight, EditPen, Search } from '@element-plus/icons-vue'
 import { useMemoryStore } from '@/stores/memories'
-import type { SearchResult } from '@/stores/memories'
+import type { Memory, SearchResult } from '@/stores/memories'
 import { useContactStore } from '@/stores/contacts'
-import api from '@/api'
 import { getAiSettings } from '@/api/settings'
-
-interface MessageSource {
-  id: number
-  speaker: string
-  content: string
-  rawTime: string
-}
+import {
+  categoryMeta,
+  isSearchResult,
+  MEMORY_CATEGORIES,
+  platformLabel,
+} from '@/utils/presentation'
+import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import MonogramAvatar from '@/components/MonogramAvatar.vue'
+import MemoryItem from '@/components/MemoryItem.vue'
 
 const memoryStore = useMemoryStore()
 const contactStore = useContactStore()
+
+const contactQuery = ref('')
+const selectedId = ref<number | null>(null)
 const searchQuery = ref('')
 const categoryFilter = ref('')
-const selectedContactId = ref<number | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
-const expandedMemoryId = ref<number | null>(null)
-const sourceMessages = ref<MessageSource[]>([])
-const sourcesLoading = ref(false)
 const embeddingActive = ref(false)
+
+const suggestionTerms = ['发烧', '喜欢', '约定', '搬家', '生日', '工作']
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+const filteredContacts = computed(() => {
+  const q = contactQuery.value.trim().toLowerCase()
+  if (!q) return contactStore.contacts
+  return contactStore.contacts.filter((c) => c.name.toLowerCase().includes(q))
+})
+
+const selectedContact = computed(() =>
+  contactStore.contacts.find((c) => c.id === selectedId.value) ?? null
+)
+
+const isSearchMode = computed(() => searchQuery.value.trim().length > 0)
+
+const baseItems = computed<(Memory | SearchResult)[]>(() => {
+  if (isSearchMode.value) return memoryStore.searchResults
+  return memoryStore.memories
+})
+
+const categoryCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {}
+  for (const item of baseItems.value) {
+    counts[item.category] = (counts[item.category] || 0) + 1
+  }
+  return counts
+})
+
+const displayResults = computed(() => {
+  if (!categoryFilter.value) return baseItems.value
+  return baseItems.value.filter((item) => item.category === categoryFilter.value)
+})
+
 onMounted(async () => {
-  contactStore.fetchAll()
+  try {
+    await contactStore.fetchAll()
+    if (contactStore.contacts.length > 0) {
+      await selectContact(contactStore.contacts[0]!.id)
+    }
+  } catch (e: any) {
+    errorMsg.value = e?.response?.data?.message || e?.message || '联系人加载失败'
+  }
+
   try {
     const settings = await getAiSettings()
     embeddingActive.value = !!settings.embeddingActive
@@ -167,230 +283,511 @@ watch(searchQuery, (val) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   if (!val.trim()) {
     memoryStore.searchResults = []
+    categoryFilter.value = ''
     return
   }
-  debounceTimer = setTimeout(() => {
-    memoryStore.searchMemories(val.trim(), selectedContactId.value ?? undefined)
+  debounceTimer = setTimeout(async () => {
+    try {
+      await memoryStore.searchMemories(val.trim())
+    } catch (e: any) {
+      errorMsg.value = e?.response?.data?.message || e?.message || '搜索失败'
+    }
   }, 300)
 })
 
-const isSearchMode = computed(() => searchQuery.value.trim().length > 0)
-
-async function onContactChange(id: number | null) {
-  if (!id) return
-  selectedContactId.value = id
+async function selectContact(id: number) {
+  selectedId.value = id
+  searchQuery.value = ''
+  categoryFilter.value = ''
   loading.value = true
   errorMsg.value = ''
   try {
     await memoryStore.fetchByContact(id)
   } catch (e: any) {
-    errorMsg.value = e?.response?.data?.message || e?.message || '加载失败'
+    errorMsg.value = e?.response?.data?.message || e?.message || '记忆加载失败'
   } finally {
     loading.value = false
   }
 }
 
 function retry() {
-  if (selectedContactId.value) onContactChange(selectedContactId.value)
-}
-
-async function toggleSources(memoryId: number) {
-  if (expandedMemoryId.value === memoryId) {
-    expandedMemoryId.value = null
-    sourceMessages.value = []
-    return
+  if (isSearchMode.value) {
+    memoryStore.searchMemories(searchQuery.value.trim())
+  } else if (selectedId.value) {
+    selectContact(selectedId.value)
   }
-  expandedMemoryId.value = memoryId
-  sourcesLoading.value = true
-  sourceMessages.value = []
-  try {
-    const res = await api.get<MessageSource[]>(`/memories/${memoryId}/sources`)
-    sourceMessages.value = res.data
-  } catch {
-    sourceMessages.value = []
-  } finally {
-    sourcesLoading.value = false
-  }
-}
-
-function formatSourceTime(t: string) {
-  if (!t) return ''
-  const d = new Date(t)
-  return d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-const filteredMemories = computed(() => {
-  let list = memoryStore.memories
-  if (categoryFilter.value) {
-    list = list.filter((m) => m.category === categoryFilter.value)
-  }
-  return list
-})
-
-const displayResults = computed<any[]>(() => {
-  if (isSearchMode.value) return memoryStore.searchResults
-  return filteredMemories.value
-})
-
-function isSearchResult(item: any): item is SearchResult {
-  return item && 'contactName' in item && 'score' in item
-}
-
-function categoryColor(cat: string) {
-  const map: Record<string, string> = {
-    promise: '#f59e0b', personal_info: '#6366f1', preference: '#a855f7',
-    event: '#10b981', persona: '#ec4899', relationship: '#f97316',
-  }
-  return map[cat] || '#9ca3af'
-}
-
-function categoryTagType(cat: string) {
-  const map: Record<string, any> = {
-    promise: 'warning', personal_info: '', preference: 'success',
-    event: 'info', persona: 'danger', relationship: '',
-  }
-  return map[cat] || 'info'
-}
-
-function categoryLabel(cat: string) {
-  const map: Record<string, string> = {
-    promise: '约定', personal_info: '个人信息', preference: '偏好',
-    event: '事件', persona: '人设', relationship: '关系',
-  }
-  return map[cat] || cat
 }
 </script>
 
 <style scoped>
-.memories-page {
-  min-height: 100vh;
-  background: #f9fafb;
+.memories {
+  min-height: 100%;
 }
 
-.page-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 0 24px;
+.memory-layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 42px;
+  align-items: start;
+  min-width: 0;
 }
 
-.page-header {
+/* ── Contact rail ──────────────────────────────────────────── */
+
+.contact-rail {
+  position: sticky;
+  top: 28px;
+  padding-top: 2px;
+  min-width: 0;
+  max-height: calc(100dvh - 56px);
+  overflow-y: auto;
+}
+
+.rail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 0;
-  height: auto;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
-.page-header h1 {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
+.rail-count {
+  color: var(--faint);
+  font-weight: 500;
 }
 
-.search-row {
+.rail-search {
+  margin-top: 10px;
+}
+
+.rail-search :deep(.el-input__wrapper) {
+  background: transparent;
+  box-shadow: none;
+  padding-left: 0;
+}
+
+.rail-search :deep(.el-input__wrapper:hover),
+.rail-search :deep(.el-input__wrapper.is-focus) {
+  box-shadow: none;
+  background: transparent;
+}
+
+.rail-search :deep(.el-input__inner) {
+  font-size: 12px;
+}
+
+.rail-list {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.search-input {
+.rail-item:hover {
+  background: var(--wash);
+}
+
+.rail-item.is-active {
+  background: var(--paper);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.rail-item-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   flex: 1;
 }
 
-.search-mode-tag {
-  flex-shrink: 0;
-  font-size: 11px;
+.rail-item-name {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.memory-card {
-  border-radius: 10px;
+.rail-item-meta {
+  margin-top: 1px;
+  font-size: 10px;
+  color: var(--faint);
 }
 
-.memory-header {
+.rail-current {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.rail-empty {
+  padding: 14px 8px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.rail-manage {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.rail-manage:hover {
+  color: var(--accent);
+}
+
+/* ── Main ──────────────────────────────────────────────────── */
+
+.memory-main {
+  min-width: 0;
+}
+
+.search-block {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.memory-confidence {
-  font-size: 12px;
-  color: #9ca3af;
+.memory-search {
+  flex: 1;
+  min-width: 0;
 }
 
-.memory-content {
-  font-size: 15px;
-  color: #374151;
-  line-height: 1.7;
-  margin: 0;
+.memory-search :deep(.el-input__wrapper) {
+  min-height: 42px;
+  padding: 0 14px;
+  background: var(--paper);
+  border-radius: var(--r-md);
 }
 
-.memory-source {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #9ca3af;
+.memory-search :deep(.el-input__inner) {
+  font-size: 13.5px;
+}
+
+.search-mode {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: var(--r-xs);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.search-mode.is-plain {
+  background: var(--wash);
+  color: var(--muted);
+}
+
+.category-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  max-width: 100%;
+  scrollbar-width: none;
 }
 
-.memory-source.clickable {
+.category-row::-webkit-scrollbar {
+  display: none;
+}
+
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
   cursor: pointer;
-  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.memory-source.clickable:hover {
-  color: #409eff;
+.category-chip:hover {
+  background: var(--wash);
+  color: var(--ink-2);
 }
 
-.expand-icon {
-  font-size: 12px;
-  margin-left: 2px;
+.category-chip.is-active {
+  background: var(--paper);
+  border-color: var(--line-strong);
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.source-loading {
-  margin-top: 12px;
-  padding: 12px;
+.chip-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+
+.chip-count {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.memory-headline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 28px 0 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.memory-headline h2 {
+  font-size: 18px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+
+.headline-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.headline-tag {
+  font-size: 10px;
+  color: var(--faint);
+  letter-spacing: 0.06em;
+}
+
+/* ── Lane ──────────────────────────────────────────────────── */
+
+.memory-lane {
+  position: relative;
+  margin: 0;
+  padding: 2px 0 0 24px;
+  list-style: none;
+}
+
+.memory-lane::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 24px;
+  left: 5px;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--line-strong),
+    var(--line) 70%,
+    transparent
+  );
+}
+
+.lane-item {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.lane-node {
+  position: absolute;
+  top: 23px;
+  left: -23px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--bg);
+}
+
+.lane-end {
+  margin: 26px 0 0 24px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
   text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
-  background: #f9fafb;
-  border-radius: 8px;
 }
 
-.source-messages {
-  margin-top: 12px;
+/* ── States ────────────────────────────────────────────────── */
+
+.memory-skeletons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-.source-msg {
-  position: relative;
-  background: #f0f7ff;
-  border-left: 3px solid #409eff;
-  border-radius: 0 8px 8px 0;
-  padding: 10px 14px;
+.memory-skeleton {
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 
-.source-speaker {
+.memory-feedback {
+  padding: 40px 20px;
+  text-align: center;
   font-size: 13px;
-  font-weight: 600;
-  color: #1f2937;
-  margin-right: 10px;
+  color: var(--muted);
 }
 
-.source-time {
-  font-size: 11px;
-  color: #9ca3af;
+.memory-feedback.is-error p {
+  margin-bottom: 12px;
+  color: var(--danger);
 }
 
-.source-content {
-  margin: 6px 0 0 0;
-  font-size: 14px;
-  color: #374151;
-  line-height: 1.6;
+.suggestion-terms {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.term-chip {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.term-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.no-contacts {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-top: 40px;
+}
+
+/* ── Responsive ────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .memory-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .contact-rail {
+    position: static;
+    padding-top: 0;
+    overflow: hidden;
+    max-height: none;
+  }
+
+  .rail-head,
+  .rail-search,
+  .rail-manage {
+    display: none;
+  }
+
+  .rail-list {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin: 0;
+    padding: 0 0 2px;
+    scrollbar-width: none;
+  }
+
+  .rail-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rail-item {
+    width: auto;
+    flex-shrink: 0;
+    padding: 5px 9px 5px 5px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+
+  .rail-item.is-active {
+    border-color: #c3c9e3;
+    background: var(--accent-tint);
+    box-shadow: none;
+  }
+
+  .rail-item-copy {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .rail-item-meta,
+  .rail-current {
+    display: none;
+  }
+
+  .rail-empty {
+    padding: 8px 0;
+  }
+
+  .memory-headline {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .memory-headline h2 {
+    font-size: 16.5px;
+  }
+
+  .search-block {
+    gap: 8px;
+  }
+
+  .search-mode {
+    display: none;
+  }
+
+  .memory-lane {
+    padding-left: 18px;
+  }
+
+  .memory-lane::before {
+    left: 4px;
+  }
+
+  .lane-node {
+    left: -18px;
+    top: 21px;
+  }
+
+  .lane-end {
+    margin-left: 18px;
+  }
 }
 </style>
