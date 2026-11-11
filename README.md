@@ -26,7 +26,19 @@
 
 > ⚠️ 本项目不需要破解任何 app 的加密数据库。所有数据由用户主动粘贴，隐私可控。
 
-![MemoryLane 首页](docs/screenshots/homepage.jpeg)
+![MemoryLane 首页](docs/screenshots/home-desktop.png)
+
+## 🖼️ 界面预览
+
+| 记忆库 · 检索 | 军师模式 |
+|---|---|
+| ![记忆库](docs/screenshots/memories-desktop.png) | ![军师模式](docs/screenshots/advisor-desktop.png) |
+
+| 关系动态 | 移动端 |
+|---|---|
+| ![关系动态](docs/screenshots/analytics-desktop.png) | ![移动端](docs/screenshots/home-mobile.png) |
+
+> 截图为演示数据；实际内容来自你主动导入的聊天记录。
 
 ## 🎬 演示视频
 
