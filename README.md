@@ -42,6 +42,8 @@
 
 ## 🎬 演示视频
 
+> 📺 **[B 站工程详解](https://www.bilibili.com/video/BV1LDy6ziE4z/)**（4 分 34 秒）｜用一段示例聊天讲清导入、会话内去重、异步提炼、中文全文检索和本地部署。
+
 > 📺 **B站演示**：https://www.bilibili.com/video/BV15dg56tEiF — 3 分钟带你看完“粘贴聊天 → AI 识人 → 提炼记忆 → 军师建议”全流程
 
 ---
